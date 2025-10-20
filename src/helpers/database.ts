@@ -9,6 +9,7 @@ export interface ProcessedTicket {
   processed_at: string;
   revision_from: string;
   revision_to: string;
+  github_authors: string;
 }
 
 let db: Database | null = null;
@@ -31,7 +32,8 @@ export function initDatabase(
       new_state TEXT NOT NULL,
       processed_at TEXT NOT NULL,
       revision_from TEXT NOT NULL,
-      revision_to TEXT NOT NULL
+      revision_to TEXT NOT NULL,
+      github_authors TEXT
     )
   `);
 
@@ -61,7 +63,8 @@ export function saveProcessedTicket(
   previousState: string,
   newState: string,
   revisionFrom: string,
-  revisionTo: string
+  revisionTo: string,
+  githubAuthors: string[] = []
 ): void {
   const database = getDatabase();
 
@@ -73,7 +76,8 @@ export function saveProcessedTicket(
       new_state,
       processed_at,
       revision_from,
-      revision_to
+      revision_to,
+      github_authors
     ) VALUES (
       $ticketId,
       $ticketTitle,
@@ -81,7 +85,8 @@ export function saveProcessedTicket(
       $newState,
       $processedAt,
       $revisionFrom,
-      $revisionTo
+      $revisionTo,
+      $githubAuthors
     )
   `);
 
@@ -93,6 +98,7 @@ export function saveProcessedTicket(
     $processedAt: new Date().toISOString(),
     $revisionFrom: revisionFrom,
     $revisionTo: revisionTo,
+    $githubAuthors: githubAuthors.join(", "),
   });
 }
 
@@ -118,6 +124,29 @@ export function getTicketHistory(ticketId: string): ProcessedTicket[] {
   `);
 
   return query.all({ $ticketId: ticketId }) as ProcessedTicket[];
+}
+
+export function wasTicketProcessed(
+  ticketId: string,
+  revisionFrom: string,
+  revisionTo: string
+): boolean {
+  const database = getDatabase();
+
+  const query = database.query(`
+    SELECT COUNT(*) as count FROM processed_tickets
+    WHERE ticket_id = $ticketId
+      AND revision_from = $revisionFrom
+      AND revision_to = $revisionTo
+  `);
+
+  const result = query.get({
+    $ticketId: ticketId,
+    $revisionFrom: revisionFrom,
+    $revisionTo: revisionTo,
+  }) as { count: number };
+
+  return result.count > 0;
 }
 
 export function closeDatabase(): void {

@@ -75,11 +75,12 @@ async function syncArgoToLinear() {
           console.log(`\n📦 ${appName}:`);
           for (const commit of commits) {
             // Highlight ticket IDs (e.g., HQ-1234) with cyan background and white text
-            const prettyCommit = commit.replace(
+            const prettyCommit = commit.message.replace(
               /([A-Z]+-\d+)/g,
               "\x1b[46m\x1b[97m$1\x1b[0m"
             );
-            console.log(`  • ${prettyCommit}`);
+            const authorStr = commit.author ? ` (@${commit.author})` : "";
+            console.log(`  • ${prettyCommit}${authorStr}`);
           }
         }
 
@@ -104,7 +105,8 @@ async function syncArgoToLinear() {
             config.linearApiKey,
             config.dryRun,
             previousRevision,
-            currentRevision
+            currentRevision,
+            appCommits
           );
         } else {
           console.log("🎫 No tickets found");

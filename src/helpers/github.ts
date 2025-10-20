@@ -2,10 +2,15 @@ const GITHUB_API_BASE = "https://api.github.com";
 const REPO_OWNER = "noona-hq";
 const REPO_NAME = "noona-deployment";
 
+export interface CommitWithAuthor {
+  message: string;
+  author: string | null;
+}
+
 export async function getAppCommits(
   appChange: AppVersionChange,
   githubToken: string
-): Promise<{ commits: string[]; accessible: boolean }> {
+): Promise<{ commits: CommitWithAuthor[]; accessible: boolean }> {
   try {
     const repoName = appChange.appName;
 
@@ -28,14 +33,16 @@ export async function getAppCommits(
 
     const compareData = (await response.json()) as GitHubCommitsResponse;
 
-    const commitTitles = compareData.commits
+    const commits = compareData.commits
       .map((commit) => {
         const title = commit.commit.message.split("\n")[0];
-        return title || commit.commit.message;
+        const message = title || commit.commit.message;
+        const author = commit.author?.login || null;
+        return { message, author };
       })
-      .filter((title) => title.length > 0);
+      .filter((commit) => commit.message.length > 0);
 
-    return { commits: commitTitles, accessible: true };
+    return { commits, accessible: true };
   } catch (error) {
     return { commits: [], accessible: false };
   }
@@ -44,7 +51,10 @@ export async function getAppCommits(
 export async function getAllAppCommits(
   appChanges: AppVersionChange[],
   githubToken: string
-): Promise<{ commits: Record<string, string[]>; inaccessible: string[] }> {
+): Promise<{
+  commits: Record<string, CommitWithAuthor[]>;
+  inaccessible: string[];
+}> {
   const promises = appChanges.map(async (appChange) => {
     const result = await getAppCommits(appChange, githubToken);
     return { appName: appChange.appName, ...result };
@@ -52,7 +62,7 @@ export async function getAllAppCommits(
 
   const results = await Promise.all(promises);
 
-  const commits: Record<string, string[]> = {};
+  const commits: Record<string, CommitWithAuthor[]> = {};
   const inaccessible: string[] = [];
 
   results.forEach(({ appName, commits: appCommits, accessible }) => {

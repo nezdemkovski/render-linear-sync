@@ -1,4 +1,4 @@
-import { saveProcessedTicket } from "./database";
+import { saveProcessedTicket, wasTicketProcessed } from "./database";
 
 const LINEAR_API_URL = "https://api.linear.app/graphql";
 const TICKET_PREFIXES = ["HQ"];
@@ -12,16 +12,18 @@ function createTicketRegex(prefixes: string[]): RegExp {
   return new RegExp(`(${prefixPattern})-\\d+`, "gi");
 }
 
+import type { CommitWithAuthor } from "./github";
+
 export function extractLinearTickets(
-  appCommits: Record<string, string[]>
+  appCommits: Record<string, CommitWithAuthor[]>
 ): string[] {
   const tickets = new Set<string>();
 
   const ticketRegex = createTicketRegex(TICKET_PREFIXES);
 
   for (const [appName, commits] of Object.entries(appCommits)) {
-    for (const commitMessage of commits) {
-      const matches = commitMessage.match(ticketRegex);
+    for (const commit of commits) {
+      const matches = commit.message.match(ticketRegex);
       if (matches) {
         matches.forEach((ticket) => {
           tickets.add(ticket.toUpperCase());
@@ -31,6 +33,24 @@ export function extractLinearTickets(
   }
 
   return Array.from(tickets).sort();
+}
+
+export function extractTicketAuthors(
+  appCommits: Record<string, CommitWithAuthor[]>,
+  ticketId: string
+): string[] {
+  const authors = new Set<string>();
+  const ticketRegex = new RegExp(ticketId, "i");
+
+  for (const [appName, commits] of Object.entries(appCommits)) {
+    for (const commit of commits) {
+      if (ticketRegex.test(commit.message) && commit.author) {
+        authors.add(commit.author);
+      }
+    }
+  }
+
+  return Array.from(authors);
 }
 
 export function extractTicketsFromCommit(commitMessage: string): string[] {
@@ -241,7 +261,8 @@ export async function processLinearTickets(
   apiKey: string,
   isDryRun: boolean = false,
   revisionFrom: string = "",
-  revisionTo: string = ""
+  revisionTo: string = "",
+  appCommits: Record<string, CommitWithAuthor[]> = {}
 ): Promise<void> {
   if (tickets.length === 0) {
     return;
@@ -268,6 +289,10 @@ export async function processLinearTickets(
 
   for (const { ticketId, issue, error } of ticketResults) {
     if (error || !issue) {
+      console.error(
+        `❌ Failed to fetch ${ticketId}:`,
+        error || "Issue not found"
+      );
       errors++;
       continue;
     }
@@ -280,8 +305,11 @@ export async function processLinearTickets(
       alreadyDone++;
     } else {
       if (isDryRun) {
+        const authors = extractTicketAuthors(appCommits, ticketId);
+        const authorStr =
+          authors.length > 0 ? ` by @${authors.join(", @")}` : "";
         console.log(
-          `🔄 [DRY RUN] Would move ${ticketId} (${issue.title}) to Done (currently: ${issue.state.name})`
+          `🔄 [DRY RUN] Would move ${ticketId} (${issue.title}) to Done (currently: ${issue.state.name})${authorStr}`
         );
         movedToDone++;
       } else {
@@ -308,16 +336,23 @@ export async function processLinearTickets(
 
         const issue = ticketResults.find((r) => r.ticketId === ticketId)?.issue;
         if (issue) {
-          saveProcessedTicket(
-            ticketId,
-            issue.title,
-            issue.state.name,
-            "Done",
-            revisionFrom,
-            revisionTo
-          );
+          if (!wasTicketProcessed(ticketId, revisionFrom, revisionTo)) {
+            const authors = extractTicketAuthors(appCommits, ticketId);
+            saveProcessedTicket(
+              ticketId,
+              issue.title,
+              issue.state.name,
+              "Done",
+              revisionFrom,
+              revisionTo,
+              authors
+            );
+          }
         }
       } else {
+        console.error(
+          `❌ Failed to move ${ticketId} to Done - will retry on next run`
+        );
         errors++;
       }
     }
@@ -336,6 +371,8 @@ export async function processLinearTickets(
   }
 
   if (errors > 0) {
-    console.log(`❌ ${errors} tickets had errors`);
+    console.log(
+      `❌ ${errors} tickets had errors (will be retried on next run)`
+    );
   }
 }

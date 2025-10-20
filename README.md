@@ -195,6 +195,7 @@ The database stores:
 - Ticket ID and title
 - Previous and new states
 - Git revision information (from/to)
+- GitHub authors (who worked on the ticket)
 - Timestamp of processing
 
 ### Ticket Prefixes
