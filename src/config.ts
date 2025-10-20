@@ -5,6 +5,7 @@ export interface Config {
   argoCdUser: string;
   argoCdPassword: string;
   argoCdAppName: string;
+  dryRun: boolean;
 }
 
 export function loadConfig(): Config {
@@ -37,6 +38,7 @@ export function loadConfig(): Config {
     argoCdUser: process.env.ARGOCD_USER!,
     argoCdPassword: process.env.ARGOCD_PASSWORD!,
     argoCdAppName: process.env.ARGOCD_APP_NAME!,
+    dryRun: process.env.DRY_RUN === "true",
   };
 
   return config;

@@ -131,10 +131,7 @@ export async function getDoneState(
     };
 
     const doneState = data.data.workflowStates.nodes.find(
-      (state) =>
-        state.type === "completed" ||
-        state.name.toLowerCase().includes("done") ||
-        state.name.toLowerCase().includes("completed")
+      (state) => state.name.trim().toLowerCase() === "done"
     );
 
     return doneState || null;
@@ -280,7 +277,7 @@ export async function processLinearTickets(
     } else {
       if (isDryRun) {
         console.log(
-          `🔄 [DRY RUN] Would move ${ticketId} to Done (currently: ${issue.state.name})`
+          `🔄 [DRY RUN] Would move ${ticketId} (${issue.title}) to Done (currently: ${issue.state.name})`
         );
         movedToDone++;
       } else {

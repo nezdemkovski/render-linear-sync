@@ -7,10 +7,12 @@ import { loadConfig } from "./config";
 import { getChartLockDiff, getAllAppCommits } from "./helpers/github";
 import { extractLinearTickets, processLinearTickets } from "./helpers/linear";
 
-const isDryRun = true;
-
 async function main() {
   const config = loadConfig();
+
+  if (config.dryRun) {
+    console.log("🧪 DRY RUN MODE - No changes will be made to Linear tickets");
+  }
 
   const argoApp = await getArgoApplication(
     config.argoCdUrl,
@@ -66,6 +68,20 @@ async function main() {
         );
         console.log(`📝 ${totalCommits} commits found`);
 
+        // Print commits per app in a pretty format
+        for (const [appName, commits] of Object.entries(appCommits)) {
+          if (!Array.isArray(commits) || commits.length === 0) continue;
+          console.log(`\n📦 ${appName}:`);
+          for (const commit of commits) {
+            // Highlight ticket IDs (e.g., HQ-1234) with cyan background and white text
+            const prettyCommit = commit.replace(
+              /([A-Z]+-\d+)/g,
+              "\x1b[46m\x1b[97m$1\x1b[0m"
+            );
+            console.log(`  • ${prettyCommit}`);
+          }
+        }
+
         if (inaccessible.length > 0) {
           console.log(
             `⚠️ ${
@@ -85,7 +101,7 @@ async function main() {
           await processLinearTickets(
             linearTickets,
             config.linearApiKey,
-            isDryRun
+            config.dryRun
           );
         } else {
           console.log("🎫 No tickets found");
