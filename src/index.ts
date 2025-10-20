@@ -6,8 +6,9 @@ import {
 import { loadConfig } from "./config";
 import { getChartLockDiff, getAllAppCommits } from "./helpers/github";
 import { extractLinearTickets, processLinearTickets } from "./helpers/linear";
+import { initDatabase, closeDatabase } from "./helpers/database";
 
-async function main() {
+async function syncArgoToLinear() {
   const config = loadConfig();
 
   if (config.dryRun) {
@@ -101,7 +102,9 @@ async function main() {
           await processLinearTickets(
             linearTickets,
             config.linearApiKey,
-            config.dryRun
+            config.dryRun,
+            previousRevision,
+            currentRevision
           );
         } else {
           console.log("🎫 No tickets found");
@@ -114,6 +117,39 @@ async function main() {
     }
   } else {
     console.log("⚠️ No revision changes");
+  }
+}
+
+async function main() {
+  const config = loadConfig();
+
+  initDatabase(config.dbPath);
+
+  if (config.cronEnabled) {
+    const intervalMs = config.cronIntervalMinutes * 60 * 1000;
+    console.log(
+      `⏰ Cron mode enabled - Running every ${config.cronIntervalMinutes} minute(s)`
+    );
+    console.log(
+      `📅 Next run: ${new Date(Date.now() + intervalMs).toLocaleString()}\n`
+    );
+
+    await syncArgoToLinear();
+
+    setInterval(async () => {
+      console.log(
+        `\n⏰ ${new Date().toLocaleString()} - Starting scheduled sync...`
+      );
+      await syncArgoToLinear();
+      console.log(
+        `📅 Next run: ${new Date(Date.now() + intervalMs).toLocaleString()}\n`
+      );
+    }, intervalMs);
+
+    console.log("✨ Cron scheduler is running. Press Ctrl+C to stop.\n");
+  } else {
+    await syncArgoToLinear();
+    closeDatabase();
   }
 }
 

@@ -22,6 +22,13 @@ ENV NODE_ENV=production
 # - ARGOCD_USER: ArgoCD username
 # - ARGOCD_PASSWORD: ArgoCD password
 # - ARGOCD_APP_NAME: ArgoCD application name (e.g., staging, qa-netherlands)
+# - DRY_RUN: Set to "true" for testing without making changes (optional)
+# - DB_PATH: Path to SQLite database (optional, defaults to ./argocd-linear-sync.db)
+# - CRON_ENABLED: Set to "true" to run continuously on a schedule (optional)
+# - CRON_INTERVAL_MINUTES: Interval in minutes between runs when cron is enabled (optional, defaults to 5)
+
+# Create a volume mount point for the database
+VOLUME ["/app/data"]
 
 # Set the entrypoint
 ENTRYPOINT ["bun", "run", "start"] 

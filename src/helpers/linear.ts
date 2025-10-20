@@ -1,3 +1,5 @@
+import { saveProcessedTicket } from "./database";
+
 const LINEAR_API_URL = "https://api.linear.app/graphql";
 const TICKET_PREFIXES = ["HQ"];
 
@@ -237,7 +239,9 @@ export async function moveIssueToDone(
 export async function processLinearTickets(
   tickets: string[],
   apiKey: string,
-  isDryRun: boolean = false
+  isDryRun: boolean = false,
+  revisionFrom: string = "",
+  revisionTo: string = ""
 ): Promise<void> {
   if (tickets.length === 0) {
     return;
@@ -298,9 +302,21 @@ export async function processLinearTickets(
 
     const moveResults = await Promise.all(movePromises);
 
-    for (const { success } of moveResults) {
+    for (const { ticketId, success } of moveResults) {
       if (success) {
         movedToDone++;
+
+        const issue = ticketResults.find((r) => r.ticketId === ticketId)?.issue;
+        if (issue) {
+          saveProcessedTicket(
+            ticketId,
+            issue.title,
+            issue.state.name,
+            "Done",
+            revisionFrom,
+            revisionTo
+          );
+        }
       } else {
         errors++;
       }

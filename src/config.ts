@@ -6,6 +6,9 @@ export interface Config {
   argoCdPassword: string;
   argoCdAppName: string;
   dryRun: boolean;
+  dbPath: string;
+  cronEnabled: boolean;
+  cronIntervalMinutes: number;
 }
 
 export function loadConfig(): Config {
@@ -39,6 +42,9 @@ export function loadConfig(): Config {
     argoCdPassword: process.env.ARGOCD_PASSWORD!,
     argoCdAppName: process.env.ARGOCD_APP_NAME!,
     dryRun: process.env.DRY_RUN === "true",
+    dbPath: process.env.DB_PATH || "./argocd-linear-sync.db",
+    cronEnabled: process.env.CRON_ENABLED === "true",
+    cronIntervalMinutes: parseInt(process.env.CRON_INTERVAL_MINUTES || "5", 10),
   };
 
   return config;
