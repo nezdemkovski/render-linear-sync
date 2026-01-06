@@ -3,6 +3,7 @@ export interface Config {
   renderApiKey: string;
   renderWorkspaceId: string | undefined;
   renderBranch: string;
+  webhookSecret: string | undefined;
   dryRun: boolean;
   dbPath: string;
 }

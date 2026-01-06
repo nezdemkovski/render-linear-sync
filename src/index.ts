@@ -1,6 +1,7 @@
 import { loadConfig } from "./config";
 import { initDatabase, closeDatabase } from "./helpers/database";
 import { processDeployWebhook } from "./helpers/webhook";
+import { verifyWebhookSignature } from "./helpers/webhook-verification";
 import type { RenderWebhookPayload } from "../types/webhook";
 
 const main = async () => {
@@ -44,7 +45,37 @@ const main = async () => {
 
       if (url.pathname === "/webhook" && req.method === "POST") {
         try {
-          const payload = (await req.json()) as RenderWebhookPayload;
+          const bodyText = await req.text();
+          const signature = req.headers.get("webhook-signature");
+          const webhookId = req.headers.get("webhook-id");
+          const webhookTimestamp = req.headers.get("webhook-timestamp");
+
+          if (config.webhookSecret) {
+            const isValid = await verifyWebhookSignature(
+              bodyText,
+              signature,
+              webhookId,
+              webhookTimestamp,
+              config.webhookSecret
+            );
+
+            if (!isValid) {
+              console.error("❌ Invalid webhook signature");
+              return new Response(
+                JSON.stringify({ error: "Invalid signature" }),
+                {
+                  status: 401,
+                  headers: { "Content-Type": "application/json" },
+                }
+              );
+            }
+          } else if (signature) {
+            console.warn(
+              "⚠️  Webhook signature provided but WEBHOOK_SECRET not configured"
+            );
+          }
+
+          const payload = JSON.parse(bodyText) as RenderWebhookPayload;
 
           if (payload.type !== "deploy_ended") {
             return new Response(

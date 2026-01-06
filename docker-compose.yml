@@ -9,6 +9,7 @@ services:
       RENDER_API_KEY: ${RENDER_API_KEY}
       RENDER_WORKSPACE_ID: ${RENDER_WORKSPACE_ID:-}
       RENDER_BRANCH: ${RENDER_BRANCH:-main}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
 
       # Application Configuration
       DRY_RUN: ${DRY_RUN:-false}

@@ -61,6 +61,7 @@ PORT=3000
 - **Render API Key**: Go to [Render Dashboard → Account Settings → API Keys](https://dashboard.render.com/u/settings#api-keys) and create a new API key
 - **Render Workspace ID** (optional): Leave empty to monitor all workspaces, or set to a specific workspace ID
 - **Render Branch** (optional): Branch to filter deployments (defaults to "main")
+- **Webhook Secret** (optional but recommended): A secure random string used to verify webhook authenticity. Generate with: `openssl rand -hex 32` or `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
 ## Usage
 
@@ -78,11 +79,28 @@ The server will start on port 3000 (or the port specified in `PORT` env var) and
 
 ### Setting Up Render Webhooks
 
-1. Go to [Render Dashboard → Integrations → Webhooks](https://dashboard.render.com/webhooks)
-2. Create a new webhook with:
+1. Generate a webhook secret (if not already done):
+
+   ```bash
+   openssl rand -hex 32
+   # or
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+
+2. Add the secret to your `.env` file:
+
+   ```env
+   WEBHOOK_SECRET=your-generated-secret-here
+   ```
+
+3. Go to [Render Dashboard → Integrations → Webhooks](https://dashboard.render.com/webhooks)
+4. Create a new webhook with:
    - **URL**: `https://your-domain.com/webhook` (or use a service like ngrok for local testing)
    - **Event**: `deploy.ended`
-3. The webhook will automatically process deployments and update Linear tickets
+   - **Signing Secret**: Use the same secret you set in `WEBHOOK_SECRET`
+5. The webhook will automatically process deployments and update Linear tickets
+
+**Security Note**: If `WEBHOOK_SECRET` is set, all webhook requests must include a valid signature. Requests without a valid signature will be rejected with a 401 error.
 
 ### Docker Compose (Local Build)
 

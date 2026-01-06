@@ -20,6 +20,7 @@ ENV NODE_ENV=production
 # - RENDER_API_KEY: Render API key from https://dashboard.render.com/u/settings#api-keys
 # - RENDER_WORKSPACE_ID: Render workspace ID (optional, defaults to all workspaces)
 # - RENDER_BRANCH: Branch to filter deployments (optional, defaults to "main")
+# - WEBHOOK_SECRET: Secret for verifying webhook signatures (optional but recommended)
 # - DRY_RUN: Set to "true" for testing without making changes (optional)
 # - DB_PATH: Path to SQLite database (optional, defaults to ./render-linear-sync.db)
 # - PORT: Port for webhook server (optional, defaults to 3000)

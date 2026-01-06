@@ -24,6 +24,7 @@ export const loadConfig = () => {
     renderApiKey: process.env.RENDER_API_KEY!,
     renderWorkspaceId: process.env.RENDER_WORKSPACE_ID,
     renderBranch: process.env.RENDER_BRANCH || "main",
+    webhookSecret: process.env.WEBHOOK_SECRET,
     dryRun: process.env.DRY_RUN === "true",
     dbPath: process.env.DB_PATH || "./render-linear-sync.db",
   };
