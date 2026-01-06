@@ -36,15 +36,11 @@ export const verifyWebhookSignature = async (
       return false;
     }
 
-    const normalizedSecret = secret.startsWith("whsec_")
-      ? secret.slice(6)
-      : secret;
-
-    const signedString = `${webhookId}.${webhookTimestamp}.${payload}.${normalizedSecret}`;
+    const signedString = `${webhookId}.${webhookTimestamp}.${payload}`;
 
     const key = await crypto.subtle.importKey(
       "raw",
-      encoder.encode(normalizedSecret),
+      encoder.encode(secret),
       { name: "HMAC", hash: "SHA-256" },
       false,
       ["sign"]
