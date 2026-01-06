@@ -1,158 +1,104 @@
-import {
-  getArgoApplication,
-  getCurrentRevision,
-  getPreviousRevision,
-} from "./helpers/argo";
 import { loadConfig } from "./config";
-import { getChartLockDiff, getAllAppCommits } from "./helpers/github";
-import { extractLinearTickets, processLinearTickets } from "./helpers/linear";
 import { initDatabase, closeDatabase } from "./helpers/database";
+import { processDeployWebhook } from "./helpers/webhook";
+import type { RenderWebhookPayload } from "../types/webhook";
 
-async function syncArgoToLinear() {
-  const config = loadConfig();
-
-  if (config.dryRun) {
-    console.log("🧪 DRY RUN MODE - No changes will be made to Linear tickets");
-  }
-
-  const argoApp = await getArgoApplication(
-    config.argoCdUrl,
-    config.argoCdUser,
-    config.argoCdPassword,
-    config.argoCdAppName
-  );
-
-  if (!argoApp) {
-    console.error("❌ Failed to get ArgoCD application");
-    process.exit(1);
-  }
-
-  const currentRevision = getCurrentRevision(argoApp);
-  const previousRevision = getPreviousRevision(argoApp);
-
-  console.log(
-    `🚀 ${argoApp.metadata.name} | ${
-      argoApp.status.sync.status
-    } | ${currentRevision.substring(0, 8)}...${previousRevision.substring(
-      0,
-      8
-    )}`
-  );
-
-  if (
-    currentRevision &&
-    previousRevision &&
-    currentRevision !== previousRevision
-  ) {
-    try {
-      console.log("🔍 Getting Chart.lock diff from GitHub...");
-      const appChanges = await getChartLockDiff(
-        currentRevision,
-        previousRevision,
-        config.githubToken
-      );
-
-      if (appChanges.length > 0) {
-        console.log(
-          `📊 ${appChanges.length} apps changed: ${appChanges
-            .map((app) => app.appName)
-            .join(", ")}`
-        );
-
-        const { commits: appCommits, inaccessible } = await getAllAppCommits(
-          appChanges,
-          config.githubToken
-        );
-        const totalCommits = Object.values(appCommits).reduce(
-          (sum, commits) => sum + commits.length,
-          0
-        );
-        console.log(`📝 ${totalCommits} commits found`);
-
-        // Print commits per app in a pretty format
-        for (const [appName, commits] of Object.entries(appCommits)) {
-          if (!Array.isArray(commits) || commits.length === 0) continue;
-          console.log(`\n📦 ${appName}:`);
-          for (const commit of commits) {
-            // Highlight ticket IDs (e.g., HQ-1234) with cyan background and white text
-            const prettyCommit = commit.message.replace(
-              /([A-Z]+-\d+)/g,
-              "\x1b[46m\x1b[97m$1\x1b[0m"
-            );
-            const authorStr = commit.author ? ` (@${commit.author})` : "";
-            console.log(`  • ${prettyCommit}${authorStr}`);
-          }
-        }
-
-        if (inaccessible.length > 0) {
-          console.log(
-            `⚠️ ${
-              inaccessible.length
-            } repos not found or commits not accessible: ${inaccessible.join(
-              ", "
-            )}`
-          );
-        }
-
-        const linearTickets = extractLinearTickets(appCommits);
-        if (linearTickets.length > 0) {
-          console.log(
-            `🎫 ${linearTickets.length} tickets: ${linearTickets.join(", ")}`
-          );
-
-          await processLinearTickets(
-            linearTickets,
-            config.linearApiKey,
-            config.dryRun,
-            previousRevision,
-            currentRevision,
-            appCommits
-          );
-        } else {
-          console.log("🎫 No tickets found");
-        }
-      } else {
-        console.log("📊 No changes");
-      }
-    } catch (error) {
-      console.error("❌ Error:", error);
-    }
-  } else {
-    console.log("⚠️ No revision changes");
-  }
-}
-
-async function main() {
+const main = async () => {
   const config = loadConfig();
 
   initDatabase(config.dbPath);
 
-  if (config.cronEnabled) {
-    const intervalMs = config.cronIntervalMinutes * 60 * 1000;
-    console.log(
-      `⏰ Cron mode enabled - Running every ${config.cronIntervalMinutes} minute(s)`
-    );
-    console.log(
-      `📅 Next run: ${new Date(Date.now() + intervalMs).toLocaleString()}\n`
-    );
+  const isDryRun = config.dryRun;
 
-    await syncArgoToLinear();
-
-    setInterval(async () => {
-      console.log(
-        `\n⏰ ${new Date().toLocaleString()} - Starting scheduled sync...`
-      );
-      await syncArgoToLinear();
-      console.log(
-        `📅 Next run: ${new Date(Date.now() + intervalMs).toLocaleString()}\n`
-      );
-    }, intervalMs);
-
-    console.log("✨ Cron scheduler is running. Press Ctrl+C to stop.\n");
-  } else {
-    await syncArgoToLinear();
-    closeDatabase();
+  if (isDryRun) {
+    console.log("🧪 DRY RUN MODE - No changes will be made to Linear tickets");
   }
-}
+
+  console.log("🚀 Starting Render-Linear Sync Webhook Receiver...");
+  console.log(`📡 Listening on port ${process.env.PORT || 3000}`);
+  console.log(
+    `🔗 Webhook URL: http://localhost:${process.env.PORT || 3000}/webhook`
+  );
+  console.log(
+    "\n💡 Configure this URL in Render Dashboard → Integrations → Webhooks"
+  );
+  console.log("   Event: deploy.ended\n");
+
+  Bun.serve({
+    port: parseInt(process.env.PORT || "3000", 10),
+    async fetch(req) {
+      const url = new URL(req.url);
+
+      if (url.pathname === "/health" || url.pathname === "/") {
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            service: "render-linear-sync",
+            mode: isDryRun ? "dry-run" : "live",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      if (url.pathname === "/webhook" && req.method === "POST") {
+        try {
+          const payload = (await req.json()) as RenderWebhookPayload;
+
+          if (payload.type !== "deploy_ended") {
+            return new Response(
+              JSON.stringify({ message: "Event type not supported" }),
+              {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              }
+            );
+          }
+
+          processDeployWebhook(
+            payload,
+            config.renderApiKey,
+            config.linearApiKey,
+            isDryRun,
+            config.renderBranch
+          ).catch((error) => {
+            console.error("❌ Error processing webhook:", error);
+          });
+
+          return new Response(
+            JSON.stringify({ message: "Webhook received and processing" }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        } catch (error) {
+          console.error("❌ Error parsing webhook payload:", error);
+          return new Response(JSON.stringify({ error: "Invalid payload" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+
+  console.log("✨ Webhook server is running. Press Ctrl+C to stop.\n");
+
+  process.on("SIGINT", () => {
+    console.log("\n🛑 Shutting down gracefully...");
+    closeDatabase();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", () => {
+    console.log("\n🛑 Shutting down gracefully...");
+    closeDatabase();
+    process.exit(0);
+  });
+};
 
 main();

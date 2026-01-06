@@ -1,22 +1,9 @@
 import { Database } from "bun:sqlite";
-
-export interface ProcessedTicket {
-  id: number;
-  ticket_id: string;
-  ticket_title: string;
-  previous_state: string;
-  new_state: string;
-  processed_at: string;
-  revision_from: string;
-  revision_to: string;
-  github_authors: string;
-}
+import type { ProcessedTicket } from "../../types/database";
 
 let db: Database | null = null;
 
-export function initDatabase(
-  dbPath: string = "./argocd-linear-sync.db"
-): Database {
+export const initDatabase = (dbPath: string = "./render-linear-sync.db") => {
   if (db) {
     return db;
   }
@@ -31,9 +18,11 @@ export function initDatabase(
       previous_state TEXT NOT NULL,
       new_state TEXT NOT NULL,
       processed_at TEXT NOT NULL,
-      revision_from TEXT NOT NULL,
-      revision_to TEXT NOT NULL,
-      github_authors TEXT
+      deploy_id TEXT NOT NULL,
+      service_id TEXT NOT NULL,
+      service_name TEXT NOT NULL,
+      commit_id TEXT NOT NULL,
+      commit_message TEXT NOT NULL
     )
   `);
 
@@ -45,27 +34,37 @@ export function initDatabase(
     CREATE INDEX IF NOT EXISTS idx_processed_at ON processed_tickets(processed_at)
   `);
 
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_deploy_id ON processed_tickets(deploy_id)
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_service_id ON processed_tickets(service_id)
+  `);
+
   console.log(`📊 Database initialized at ${dbPath}`);
 
   return db;
-}
+};
 
-export function getDatabase(): Database {
+export const getDatabase = () => {
   if (!db) {
     throw new Error("Database not initialized. Call initDatabase() first.");
   }
   return db;
-}
+};
 
-export function saveProcessedTicket(
+export const saveProcessedTicket = (
   ticketId: string,
   ticketTitle: string,
   previousState: string,
   newState: string,
-  revisionFrom: string,
-  revisionTo: string,
-  githubAuthors: string[] = []
-): void {
+  deployId: string,
+  serviceId: string,
+  serviceName: string,
+  commitId: string,
+  commitMessage: string
+) => {
   const database = getDatabase();
 
   const query = database.query(`
@@ -75,18 +74,22 @@ export function saveProcessedTicket(
       previous_state,
       new_state,
       processed_at,
-      revision_from,
-      revision_to,
-      github_authors
+      deploy_id,
+      service_id,
+      service_name,
+      commit_id,
+      commit_message
     ) VALUES (
       $ticketId,
       $ticketTitle,
       $previousState,
       $newState,
       $processedAt,
-      $revisionFrom,
-      $revisionTo,
-      $githubAuthors
+      $deployId,
+      $serviceId,
+      $serviceName,
+      $commitId,
+      $commitMessage
     )
   `);
 
@@ -96,13 +99,15 @@ export function saveProcessedTicket(
     $previousState: previousState,
     $newState: newState,
     $processedAt: new Date().toISOString(),
-    $revisionFrom: revisionFrom,
-    $revisionTo: revisionTo,
-    $githubAuthors: githubAuthors.join(", "),
+    $deployId: deployId,
+    $serviceId: serviceId,
+    $serviceName: serviceName,
+    $commitId: commitId,
+    $commitMessage: commitMessage,
   });
-}
+};
 
-export function getProcessedTickets(limit: number = 100): ProcessedTicket[] {
+export const getProcessedTickets = (limit: number = 100) => {
   const database = getDatabase();
 
   const query = database.query(`
@@ -112,9 +117,9 @@ export function getProcessedTickets(limit: number = 100): ProcessedTicket[] {
   `);
 
   return query.all({ $limit: limit }) as ProcessedTicket[];
-}
+};
 
-export function getTicketHistory(ticketId: string): ProcessedTicket[] {
+export const getTicketHistory = (ticketId: string) => {
   const database = getDatabase();
 
   const query = database.query(`
@@ -124,34 +129,46 @@ export function getTicketHistory(ticketId: string): ProcessedTicket[] {
   `);
 
   return query.all({ $ticketId: ticketId }) as ProcessedTicket[];
-}
+};
 
-export function wasTicketProcessed(
+export const wasDeployProcessed = (deployId: string) => {
+  const database = getDatabase();
+
+  const query = database.query(`
+    SELECT COUNT(*) as count FROM processed_tickets
+    WHERE deploy_id = $deployId
+  `);
+
+  const result = query.get({
+    $deployId: deployId,
+  }) as { count: number };
+
+  return result.count > 0;
+};
+
+export const wasTicketProcessedForDeploy = (
   ticketId: string,
-  revisionFrom: string,
-  revisionTo: string
-): boolean {
+  deployId: string
+) => {
   const database = getDatabase();
 
   const query = database.query(`
     SELECT COUNT(*) as count FROM processed_tickets
     WHERE ticket_id = $ticketId
-      AND revision_from = $revisionFrom
-      AND revision_to = $revisionTo
+      AND deploy_id = $deployId
   `);
 
   const result = query.get({
     $ticketId: ticketId,
-    $revisionFrom: revisionFrom,
-    $revisionTo: revisionTo,
+    $deployId: deployId,
   }) as { count: number };
 
   return result.count > 0;
-}
+};
 
-export function closeDatabase(): void {
+export const closeDatabase = () => {
   if (db) {
     db.close(false);
     db = null;
   }
-}
+};

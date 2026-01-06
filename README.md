@@ -1,22 +1,21 @@
-# ArgoCD-Linear Sync
+# Render-Linear Sync
 
-A tool that synchronizes ArgoCD deployments with Linear issue tracking. It automatically moves Linear tickets to "Done" status when applications are deployed.
+A tool that synchronizes Render deployments with Linear issue tracking. It automatically moves Linear tickets to "Done" status when applications are deployed.
 
 ## Features
 
-- 🔄 Monitors ArgoCD application deployments
-- 📊 Analyzes Chart.lock changes to detect version updates
+- 🔄 Monitors Render service deployments
+- 📊 Detects new deployments across all services in your workspace
 - 🔍 Extracts Linear ticket references from Git commit messages
 - 🎫 Automatically updates Linear ticket statuses
-- 💾 Tracks processed tickets in SQLite database
+- 💾 Tracks processed deploys in SQLite database
 - 🧪 Dry run mode for testing before making changes
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) runtime
 - Linear API key
-- GitHub Personal Access Token
-- ArgoCD credentials
+- Render API key
 
 ## Installation
 
@@ -36,7 +35,7 @@ cp env.example .env
 
 ```bash
 # Build the Docker image
-docker build -t argocd-linear-sync .
+docker build -t render-linear-sync .
 
 # Or use the npm script
 bun run docker:build
@@ -48,119 +47,111 @@ Create a `.env` file with the following variables:
 
 ```env
 LINEAR_API_KEY=lin_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-ARGOCD_URL=https://argocd.example.com
-ARGOCD_USER=your-username
-ARGOCD_PASSWORD=your-password
-ARGOCD_APP_NAME=staging
+RENDER_API_KEY=rnd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+RENDER_WORKSPACE_ID=tea-xxxxxxxxxxxxxxxx
+RENDER_BRANCH=main
 DRY_RUN=true
-DB_PATH=./argocd-linear-sync.db
-CRON_ENABLED=false
-CRON_INTERVAL_MINUTES=5
+DB_PATH=./render-linear-sync.db
+PORT=3000
 ```
 
 ### Getting API Keys
 
 - **Linear API Key**: Go to [Linear Settings → API](https://linear.app/settings/api) and create a personal API key
-- **GitHub Token**: Go to [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) and create a token with `repo` scope
-- **ArgoCD**: Use your ArgoCD username and password
+- **Render API Key**: Go to [Render Dashboard → Account Settings → API Keys](https://dashboard.render.com/u/settings#api-keys) and create a new API key
+- **Render Workspace ID** (optional): Leave empty to monitor all workspaces, or set to a specific workspace ID
+- **Render Branch** (optional): Branch to filter deployments (defaults to "main")
 
 ## Usage
 
 ### Local Development
 
 ```bash
-# Run once (single execution)
+# Start the webhook server
 bun run start
 
-# Run in cron mode (continuous with scheduled intervals)
-CRON_ENABLED=true CRON_INTERVAL_MINUTES=5 bun run start
-
-# Run in development mode (with file watching)
+# Or in development mode (with file watching)
 bun run dev
 ```
 
-### Docker
+The server will start on port 3000 (or the port specified in `PORT` env var) and listen for webhook events from Render.
+
+### Setting Up Render Webhooks
+
+1. Go to [Render Dashboard → Integrations → Webhooks](https://dashboard.render.com/webhooks)
+2. Create a new webhook with:
+   - **URL**: `https://your-domain.com/webhook` (or use a service like ngrok for local testing)
+   - **Event**: `deploy.ended`
+3. The webhook will automatically process deployments and update Linear tickets
+
+### Docker Compose (Local Build)
+
+If you can't access GHCR, use the local build compose file:
 
 ```bash
-# Run once with .env file and persistent database
-docker run --rm \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  -e DB_PATH=/app/data/argocd-linear-sync.db \
-  argocd-linear-sync
+# Build and start the service
+docker compose -f docker-compose.local.yml up -d --build
 
-# Run in cron mode (continuous, every 5 minutes)
+# View logs
+docker compose -f docker-compose.local.yml logs -f
+
+# Stop the service
+docker compose -f docker-compose.local.yml down
+```
+
+### Docker CLI
+
+```bash
+# Run webhook server with .env file and persistent database
 docker run -d \
-  --name argocd-linear-sync \
+  --name render-linear-sync \
   --env-file .env \
   -v $(pwd)/data:/app/data \
-  -e DB_PATH=/app/data/argocd-linear-sync.db \
-  -e CRON_ENABLED=true \
-  -e CRON_INTERVAL_MINUTES=5 \
-  argocd-linear-sync
+  -p 3000:3000 \
+  -e DB_PATH=/app/data/render-linear-sync.db \
+  -e PORT=3000 \
+  ghcr.io/noona-hq/render-linear-sync:latest
 
 # Run in dry run mode (test without making changes)
 docker run --rm \
   --env-file .env \
   -v $(pwd)/data:/app/data \
-  -e DB_PATH=/app/data/argocd-linear-sync.db \
+  -p 3000:3000 \
+  -e DB_PATH=/app/data/render-linear-sync.db \
   -e DRY_RUN=true \
-  argocd-linear-sync
-
-# Run with individual environment variables
-docker run --rm \
-  -e LINEAR_API_KEY=your_key \
-  -e GITHUB_TOKEN=your_token \
-  -e ARGOCD_URL=https://argocd.example.com \
-  -e ARGOCD_USER=your_username \
-  -e ARGOCD_PASSWORD=your_password \
-  -e ARGOCD_APP_NAME=staging \
-  -e DRY_RUN=true \
-  -v $(pwd)/data:/app/data \
-  -e DB_PATH=/app/data/argocd-linear-sync.db \
-  argocd-linear-sync
+  -e PORT=3000 \
+  ghcr.io/noona-hq/render-linear-sync:latest
 
 # Run in interactive mode for debugging
-docker run --rm -it --env-file .env argocd-linear-sync /bin/bash
+docker run --rm -it --env-file .env ghcr.io/noona-hq/render-linear-sync:latest /bin/bash
 ```
 
 **Note:** The `-v $(pwd)/data:/app/data` flag mounts a local directory to persist the SQLite database between container runs.
 
 ## How It Works
 
-1. **Connects to ArgoCD** and retrieves application deployment information
-2. **Compares revisions** to detect changes between current and previous deployments
-3. **Analyzes Chart.lock** changes to identify which applications were updated
-4. **Fetches commit history** from GitHub for each changed application
-5. **Extracts Linear ticket IDs** from commit messages (e.g., HQ-123, HQ-456)
-6. **Checks ticket statuses** in Linear and moves them to "Done" if needed
+1. **Webhook receiver** listens for `deploy.ended` events from Render
+2. **Filters by branch** (default: "main") to only process production deployments
+3. **Fetches deploy details** from Render API to get commit messages
+4. **Extracts Linear ticket IDs** from commit messages (e.g., HQ-123, HQ-456)
+5. **Checks ticket statuses** in Linear and moves them to "Done" if needed
+6. **Tracks processed deploys** in SQLite database to avoid duplicates
 
 ## Configuration
 
-### Cron Mode
+### Branch Filtering
 
-Run the tool continuously on a schedule:
+By default, the webhook only processes deployments from the `main` branch. To change this:
 
-```bash
-# In .env file
-CRON_ENABLED=true
-CRON_INTERVAL_MINUTES=5
-
-# Or as environment variables
-CRON_ENABLED=true CRON_INTERVAL_MINUTES=10 bun run start
+```env
+RENDER_BRANCH=production
 ```
 
-When cron mode is enabled:
+Or set to empty to process all branches:
 
-- The tool runs immediately on startup
-- Then runs automatically every X minutes (configurable)
-- Keeps running until you stop it (Ctrl+C)
-
-When cron mode is disabled (default):
-
-- The tool runs once and exits
-- Suitable for manual runs or external cron jobs
+```env
+RENDER_BRANCH=
+```
 
 ### Dry Run Mode
 
@@ -182,7 +173,7 @@ When dry run is enabled, the tool will:
 
 ### Database
 
-The tool uses SQLite to track all processed tickets. By default, the database is stored at `./argocd-linear-sync.db`.
+The tool uses SQLite to track all processed deploys. By default, the database is stored at `./render-linear-sync.db`.
 
 You can customize the location:
 
@@ -192,10 +183,10 @@ DB_PATH=/path/to/your/database.db
 
 The database stores:
 
+- Deploy ID and service information
 - Ticket ID and title
 - Previous and new states
-- Git revision information (from/to)
-- GitHub authors (who worked on the ticket)
+- Commit ID and message
 - Timestamp of processing
 
 ### Ticket Prefixes
@@ -209,16 +200,13 @@ const TICKET_PREFIXES = ["HQ", "DEV", "BUG"]; // Add your prefixes
 ## Output Example
 
 ```
-📊 Database initialized at ./argocd-linear-sync.db
-🧪 DRY RUN MODE - No changes will be made to Linear tickets
-🚀 staging | OutOfSync | 0be94433...00d18444
-📊 8 apps changed: noona-api, noona-web, timatal, noona-messaging
-📝 92 commits found
-⚠️ 2 repos not found or commits not accessible: private-repo, archived-repo
-🎫 17 tickets: HQ-117, HQ-118, HQ-1269, HQ-1944, HQ-2070, HQ-2071
+🚀 Starting Render-Linear Sync Webhook Receiver...
+📡 Listening on port 3000
+🔗 Webhook URL: http://localhost:3000/webhook
 
-🔍 Checking 17 Linear tickets...
-🔄 [DRY RUN] Would move HQ-1944 (Fix login button styling) to Done (currently: PR merged)
-✅ 16 tickets are already completed/announced
-🔄 1 tickets would be moved to Done (DRY RUN)
+🚀 Processing deploy webhook: noona-api (evt-abc123)
+🎫 Found 1 ticket(s): HQ-1944 in commit: Fix login button styling
+🔍 Checking Linear ticket: HQ-1944
+🔄 [DRY RUN] Would move HQ-1944 (Fix login button styling) to Done (currently: In Progress)
+✅ Webhook processed successfully
 ```

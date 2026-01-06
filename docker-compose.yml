@@ -1,0 +1,19 @@
+---
+services:
+  render-linear-sync:
+    image: ghcr.io/noona-hq/render-linear-sync:latest
+    container_name: render-linear-sync
+    restart: unless-stopped
+    environment:
+      LINEAR_API_KEY: ${LINEAR_API_KEY}
+      RENDER_API_KEY: ${RENDER_API_KEY}
+      RENDER_WORKSPACE_ID: ${RENDER_WORKSPACE_ID:-}
+      RENDER_BRANCH: ${RENDER_BRANCH:-main}
+
+      # Application Configuration
+      DRY_RUN: ${DRY_RUN:-false}
+      DB_PATH: /app/data/render-linear-sync.db
+      PORT: ${PORT:-3000}
+
+    volumes:
+      - ./data:/app/data

@@ -1,5 +1,5 @@
 {
-  "name": "argocd-linear-sync",
+  "name": "render-linear-sync",
   "module": "src/index.ts",
   "type": "module",
   "private": true,
@@ -12,6 +12,6 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "docker:build": "docker build -t argocd-linear-sync ."
+    "docker:build": "docker build -t render-linear-sync ."
   }
 }

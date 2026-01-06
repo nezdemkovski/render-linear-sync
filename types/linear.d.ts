@@ -16,4 +16,13 @@ declare global {
   }
 }
 
+export interface DeployTicketInfo {
+  deployId: string;
+  serviceId: string;
+  serviceName: string;
+  commitId: string;
+  commitMessage: string;
+  tickets: string[];
+}
+
 export {};

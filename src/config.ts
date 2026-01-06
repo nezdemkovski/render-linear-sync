@@ -1,24 +1,9 @@
-export interface Config {
-  linearApiKey: string;
-  githubToken: string;
-  argoCdUrl: string;
-  argoCdUser: string;
-  argoCdPassword: string;
-  argoCdAppName: string;
-  dryRun: boolean;
-  dbPath: string;
-  cronEnabled: boolean;
-  cronIntervalMinutes: number;
-}
+import type { Config } from "../types/config";
 
-export function loadConfig(): Config {
+export const loadConfig = () => {
   const requiredVars = {
     LINEAR_API_KEY: process.env.LINEAR_API_KEY,
-    GITHUB_TOKEN: process.env.GITHUB_TOKEN,
-    ARGOCD_URL: process.env.ARGOCD_URL,
-    ARGOCD_USER: process.env.ARGOCD_USER,
-    ARGOCD_PASSWORD: process.env.ARGOCD_PASSWORD,
-    ARGOCD_APP_NAME: process.env.ARGOCD_APP_NAME,
+    RENDER_API_KEY: process.env.RENDER_API_KEY,
   };
 
   const missingVars = Object.entries(requiredVars)
@@ -36,24 +21,22 @@ export function loadConfig(): Config {
 
   const config: Config = {
     linearApiKey: process.env.LINEAR_API_KEY!,
-    githubToken: process.env.GITHUB_TOKEN!,
-    argoCdUrl: process.env.ARGOCD_URL!,
-    argoCdUser: process.env.ARGOCD_USER!,
-    argoCdPassword: process.env.ARGOCD_PASSWORD!,
-    argoCdAppName: process.env.ARGOCD_APP_NAME!,
+    renderApiKey: process.env.RENDER_API_KEY!,
+    renderWorkspaceId: process.env.RENDER_WORKSPACE_ID,
+    renderBranch: process.env.RENDER_BRANCH || "main",
     dryRun: process.env.DRY_RUN === "true",
-    dbPath: process.env.DB_PATH || "./argocd-linear-sync.db",
-    cronEnabled: process.env.CRON_ENABLED === "true",
-    cronIntervalMinutes: parseInt(process.env.CRON_INTERVAL_MINUTES || "5", 10),
+    dbPath: process.env.DB_PATH || "./render-linear-sync.db",
   };
 
-  return config;
-}
+  validateConfig(config);
 
-export function validateConfig(config: Config): void {
+  return config;
+};
+
+export const validateConfig = (config: Config) => {
   if (!config.linearApiKey.startsWith("lin_api_")) {
     console.warn(
       'LINEAR_API_KEY might be invalid - should start with "lin_api_"'
     );
   }
-}
+};

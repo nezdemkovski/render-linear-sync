@@ -17,15 +17,12 @@ ENV NODE_ENV=production
 
 # Required environment variables (pass via --env-file .env or -e flags):
 # - LINEAR_API_KEY: Linear API key from https://linear.app/settings/api
-# - GITHUB_TOKEN: GitHub Personal Access Token with repo access
-# - ARGOCD_URL: ArgoCD instance URL (e.g., https://argocd.example.com)
-# - ARGOCD_USER: ArgoCD username
-# - ARGOCD_PASSWORD: ArgoCD password
-# - ARGOCD_APP_NAME: ArgoCD application name (e.g., staging, qa-netherlands)
+# - RENDER_API_KEY: Render API key from https://dashboard.render.com/u/settings#api-keys
+# - RENDER_WORKSPACE_ID: Render workspace ID (optional, defaults to all workspaces)
+# - RENDER_BRANCH: Branch to filter deployments (optional, defaults to "main")
 # - DRY_RUN: Set to "true" for testing without making changes (optional)
-# - DB_PATH: Path to SQLite database (optional, defaults to ./argocd-linear-sync.db)
-# - CRON_ENABLED: Set to "true" to run continuously on a schedule (optional)
-# - CRON_INTERVAL_MINUTES: Interval in minutes between runs when cron is enabled (optional, defaults to 5)
+# - DB_PATH: Path to SQLite database (optional, defaults to ./render-linear-sync.db)
+# - PORT: Port for webhook server (optional, defaults to 3000)
 
 # Create a volume mount point for the database
 VOLUME ["/app/data"]
