@@ -128,7 +128,7 @@ docker run -d \
   -p 3000:3000 \
   -e DB_PATH=/app/data/render-linear-sync.db \
   -e PORT=3000 \
-  ghcr.io/noona-hq/render-linear-sync:latest
+  ghcr.io/nezdemkovski/render-linear-sync:latest
 
 # Run in dry run mode (test without making changes)
 docker run --rm \
@@ -138,10 +138,10 @@ docker run --rm \
   -e DB_PATH=/app/data/render-linear-sync.db \
   -e DRY_RUN=true \
   -e PORT=3000 \
-  ghcr.io/noona-hq/render-linear-sync:latest
+  ghcr.io/nezdemkovski/render-linear-sync:latest
 
 # Run in interactive mode for debugging
-docker run --rm -it --env-file .env ghcr.io/noona-hq/render-linear-sync:latest /bin/bash
+docker run --rm -it --env-file .env ghcr.io/nezdemkovski/render-linear-sync:latest /bin/bash
 ```
 
 **Note:** The `-v $(pwd)/data:/app/data` flag mounts a local directory to persist the SQLite database between container runs.
@@ -222,7 +222,7 @@ const TICKET_PREFIXES = ["HQ", "DEV", "BUG"]; // Add your prefixes
 📡 Listening on port 3000
 🔗 Webhook URL: http://localhost:3000/webhook
 
-🚀 Processing deploy webhook: noona-api (evt-abc123)
+🚀 Processing deploy webhook: api-service (evt-abc123)
 🎫 Found 1 ticket(s): HQ-1944 in commit: Fix login button styling
 🔍 Checking Linear ticket: HQ-1944
 🔄 [DRY RUN] Would move HQ-1944 (Fix login button styling) to Done (currently: In Progress)

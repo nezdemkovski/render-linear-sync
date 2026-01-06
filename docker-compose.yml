@@ -1,7 +1,7 @@
 ---
 services:
   render-linear-sync:
-    image: ghcr.io/noona-hq/render-linear-sync:latest
+    image: ghcr.io/nezdemkovski/render-linear-sync:latest
     container_name: render-linear-sync
     restart: unless-stopped
     environment:
