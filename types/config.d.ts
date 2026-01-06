@@ -4,6 +4,7 @@ export interface Config {
   renderWorkspaceId: string | undefined;
   renderBranch: string | undefined;
   webhookSecret: string | undefined;
+  linearTicketPrefixes: string[];
   dryRun: boolean;
   dbPath: string;
 }

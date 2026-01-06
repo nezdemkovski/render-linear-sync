@@ -9,7 +9,8 @@ export const processDeployWebhook = async (
   renderApiKey: string,
   linearApiKey: string,
   isDryRun: boolean,
-  branch?: string
+  branch: string | undefined,
+  ticketPrefixes: string[]
 ) => {
   if (payload.data.status !== "succeeded") {
     console.log(
@@ -61,7 +62,10 @@ export const processDeployWebhook = async (
     return;
   }
 
-  const tickets = extractTicketsFromCommit(matchingDeploy.commit.message);
+  const tickets = extractTicketsFromCommit(
+    matchingDeploy.commit.message,
+    ticketPrefixes
+  );
 
   if (tickets.length === 0) {
     console.log(

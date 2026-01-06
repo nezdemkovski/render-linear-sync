@@ -1,9 +1,39 @@
 import type { Config } from "../types/config";
 
 export const loadConfig = () => {
+  const renderBranchEnv = process.env.RENDER_BRANCH;
+  const renderBranch =
+    renderBranchEnv === "" ? undefined : renderBranchEnv || "main";
+
+  const linearTicketPrefixesEnv = process.env.LINEAR_TICKET_PREFIXES;
+  const linearTicketPrefixes = linearTicketPrefixesEnv
+    ? linearTicketPrefixesEnv
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+    : [];
+
+  const config: Config = {
+    linearApiKey: process.env.LINEAR_API_KEY || "",
+    renderApiKey: process.env.RENDER_API_KEY || "",
+    renderWorkspaceId: process.env.RENDER_WORKSPACE_ID,
+    renderBranch,
+    webhookSecret: process.env.WEBHOOK_SECRET,
+    linearTicketPrefixes,
+    dryRun: process.env.DRY_RUN === "true",
+    dbPath: process.env.DB_PATH || "./render-linear-sync.db",
+  };
+
+  validateConfig(config);
+
+  return config;
+};
+
+export const validateConfig = (config: Config) => {
   const requiredVars = {
-    LINEAR_API_KEY: process.env.LINEAR_API_KEY,
-    RENDER_API_KEY: process.env.RENDER_API_KEY,
+    LINEAR_API_KEY: config.linearApiKey,
+    RENDER_API_KEY: config.renderApiKey,
+    LINEAR_TICKET_PREFIXES: config.linearTicketPrefixes.length > 0,
   };
 
   const missingVars = Object.entries(requiredVars)
@@ -19,26 +49,11 @@ export const loadConfig = () => {
     process.exit(1);
   }
 
-  const renderBranchEnv = process.env.RENDER_BRANCH;
-  const renderBranch =
-    renderBranchEnv === "" ? undefined : renderBranchEnv || "main";
+  if (config.linearTicketPrefixes.length === 0) {
+    console.error("❌ LINEAR_TICKET_PREFIXES must contain at least one prefix");
+    process.exit(1);
+  }
 
-  const config: Config = {
-    linearApiKey: process.env.LINEAR_API_KEY!,
-    renderApiKey: process.env.RENDER_API_KEY!,
-    renderWorkspaceId: process.env.RENDER_WORKSPACE_ID,
-    renderBranch,
-    webhookSecret: process.env.WEBHOOK_SECRET,
-    dryRun: process.env.DRY_RUN === "true",
-    dbPath: process.env.DB_PATH || "./render-linear-sync.db",
-  };
-
-  validateConfig(config);
-
-  return config;
-};
-
-export const validateConfig = (config: Config) => {
   if (!config.linearApiKey.startsWith("lin_api_")) {
     console.warn(
       'LINEAR_API_KEY might be invalid - should start with "lin_api_"'

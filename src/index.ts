@@ -18,7 +18,7 @@ const main = async () => {
   console.log("🚀 Starting Render-Linear Sync Webhook Receiver...");
   console.log(`📡 Listening on port ${process.env.PORT || 3000}`);
   console.log(
-    `🔗 Webhook URL: http://localhost:${process.env.PORT || 3000}/webhook`
+    `🔗 Webhook URL: http://0.0.0.0:${process.env.PORT || 3000}/webhook`
   );
   console.log(
     "\n💡 Configure this URL in Render Dashboard → Integrations → Webhooks"
@@ -93,7 +93,8 @@ const main = async () => {
             config.renderApiKey,
             config.linearApiKey,
             isDryRun,
-            config.renderBranch
+            config.renderBranch,
+            config.linearTicketPrefixes
           ).catch((error) => {
             console.error("❌ Error processing webhook:", error);
           });

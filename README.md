@@ -48,6 +48,7 @@ Create a `.env` file with the following variables:
 ```env
 LINEAR_API_KEY=lin_api_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 RENDER_API_KEY=rnd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+LINEAR_TICKET_PREFIXES=HQ,DEV,BUG
 RENDER_WORKSPACE_ID=tea-xxxxxxxxxxxxxxxx
 RENDER_BRANCH=main
 DRY_RUN=true
@@ -59,9 +60,10 @@ PORT=3000
 
 - **Linear API Key**: Go to [Linear Settings → API](https://linear.app/settings/api) and create a personal API key
 - **Render API Key**: Go to [Render Dashboard → Account Settings → API Keys](https://dashboard.render.com/u/settings#api-keys) and create a new API key
+- **Linear Ticket Prefixes**: Comma-separated list of ticket prefixes to look for in commit messages (e.g., `HQ,DEV,BUG`)
 - **Render Workspace ID** (optional): Leave empty to monitor all workspaces, or set to a specific workspace ID
 - **Render Branch** (optional): Branch to filter deployments (defaults to "main")
-- **Webhook Secret** (optional but recommended): A secure random string used to verify webhook authenticity. Generate with: `openssl rand -hex 32` or `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- **Webhook Secret** (optional but recommended): Copy from Render webhook settings (starts with `whsec_`)
 
 ## Usage
 
@@ -79,28 +81,19 @@ The server will start on port 3000 (or the port specified in `PORT` env var) and
 
 ### Setting Up Render Webhooks
 
-1. Generate a webhook secret (if not already done):
-
-   ```bash
-   openssl rand -hex 32
-   # or
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-   ```
-
-2. Add the secret to your `.env` file:
-
-   ```env
-   WEBHOOK_SECRET=your-generated-secret-here
-   ```
-
-3. Go to [Render Dashboard → Integrations → Webhooks](https://dashboard.render.com/webhooks)
-4. Create a new webhook with:
+1. Go to [Render Dashboard → Integrations → Webhooks](https://dashboard.render.com/webhooks)
+2. Create a new webhook with:
    - **URL**: `https://your-domain.com/webhook` (or use a service like ngrok for local testing)
    - **Event**: `deploy.ended`
-   - **Signing Secret**: Use the same secret you set in `WEBHOOK_SECRET`
-5. The webhook will automatically process deployments and update Linear tickets
+3. After creating the webhook, Render will generate a **Signing Secret** (it starts with `whsec_`)
+4. Copy the signing secret from the webhook's Settings page in Render Dashboard
+5. Add it to your `.env` file:
 
-**Security Note**: If `WEBHOOK_SECRET` is set, all webhook requests must include a valid signature. Requests without a valid signature will be rejected with a 401 error.
+   ```env
+   WEBHOOK_SECRET=whsec_your-signing-secret-from-render
+   ```
+
+6. The webhook will automatically process deployments and update Linear tickets
 
 ### Docker Compose (Local Build)
 
@@ -162,7 +155,7 @@ docker run --rm -it --env-file .env ghcr.io/nezdemkovski/render-linear-sync:late
 By default, the webhook only processes deployments from the `main` branch. To change this:
 
 ```env
-RENDER_BRANCH=production
+RENDER_BRANCH=master
 ```
 
 Or set to empty to process all branches:
@@ -209,22 +202,24 @@ The database stores:
 
 ### Ticket Prefixes
 
-Configure which ticket prefixes to look for in `src/helpers/linear.ts`:
+**Required**: Configure which ticket prefixes to look for in commit messages using the `LINEAR_TICKET_PREFIXES` environment variable:
 
-```typescript
-const TICKET_PREFIXES = ["HQ", "DEV", "BUG"]; // Add your prefixes
+```bash
+LINEAR_TICKET_PREFIXES=HQ,DEV,BUG
 ```
+
+This is a comma-separated list of prefixes. The system will look for tickets matching any of these prefixes in commit messages (e.g., `HQ-1234`, `DEV-567`, `BUG-890`).
 
 ## Output Example
 
 ```
 🚀 Starting Render-Linear Sync Webhook Receiver...
 📡 Listening on port 3000
-🔗 Webhook URL: http://localhost:3000/webhook
+🔗 Webhook URL: http://0.0.0.0:3000/webhook
 
 🚀 Processing deploy webhook: api-service (evt-abc123)
 🎫 Found 1 ticket(s): HQ-1944 in commit: Fix login button styling
 🔍 Checking Linear ticket: HQ-1944
-🔄 [DRY RUN] Would move HQ-1944 (Fix login button styling) to Done (currently: In Progress)
+🔄 Would move HQ-1944 (Fix login button styling) to Done (currently: In Progress)
 ✅ Webhook processed successfully
 ```

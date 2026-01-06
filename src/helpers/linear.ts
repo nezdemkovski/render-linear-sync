@@ -2,15 +2,17 @@ import { saveProcessedTicket, wasTicketProcessedForDeploy } from "./database";
 import type { DeployTicketInfo } from "../../types/linear";
 
 const LINEAR_API_URL = "https://api.linear.app/graphql";
-const TICKET_PREFIXES = ["HQ"];
 
 function createTicketRegex(prefixes: string[]): RegExp {
   const prefixPattern = prefixes.join("|");
   return new RegExp(`(${prefixPattern})-\\d+`, "gi");
 }
 
-export function extractTicketsFromCommit(commitMessage: string): string[] {
-  const ticketRegex = createTicketRegex(TICKET_PREFIXES);
+export function extractTicketsFromCommit(
+  commitMessage: string,
+  prefixes: string[]
+): string[] {
+  const ticketRegex = createTicketRegex(prefixes);
   const matches = commitMessage.match(ticketRegex);
 
   if (!matches) {
