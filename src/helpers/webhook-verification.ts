@@ -36,11 +36,26 @@ export const verifyWebhookSignature = async (
       return false;
     }
 
+    let keyBytes: Uint8Array;
+    if (secret.startsWith("whsec_")) {
+      try {
+        const base64Secret = secret.slice(6);
+        keyBytes = Uint8Array.from(
+          atob(base64Secret.replace(/-/g, "+").replace(/_/g, "/")),
+          (c) => c.charCodeAt(0)
+        );
+      } catch {
+        keyBytes = encoder.encode(secret);
+      }
+    } else {
+      keyBytes = encoder.encode(secret);
+    }
+
     const signedString = `${webhookId}.${webhookTimestamp}.${payload}`;
 
     const key = await crypto.subtle.importKey(
       "raw",
-      encoder.encode(secret),
+      keyBytes,
       { name: "HMAC", hash: "SHA-256" },
       false,
       ["sign"]
