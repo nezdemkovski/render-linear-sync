@@ -12,18 +12,20 @@ const main = async () => {
   const isDryRun = config.dryRun;
 
   if (isDryRun) {
-    console.log("🧪 DRY RUN MODE - No changes will be made to Linear tickets");
+    console.log(
+      "[DRY-RUN] Mode enabled - No changes will be made to Linear tickets"
+    );
   }
 
-  console.log("🚀 Starting Render-Linear Sync Webhook Receiver...");
-  console.log(`📡 Listening on port ${process.env.PORT || 3000}`);
+  console.log("[STARTUP] Starting Render-Linear Sync Webhook Receiver");
+  console.log(`[INFO] Listening on port ${process.env.PORT || 3000}`);
   console.log(
-    `🔗 Webhook URL: http://0.0.0.0:${process.env.PORT || 3000}/webhook`
+    `[INFO] Webhook URL: http://0.0.0.0:${process.env.PORT || 3000}/webhook`
   );
   console.log(
-    "\n💡 Configure this URL in Render Dashboard → Integrations → Webhooks"
+    "\n[INFO] Configure this URL in Render Dashboard → Integrations → Webhooks"
   );
-  console.log("   Event: deploy.ended\n");
+  console.log("[INFO] Event: deploy.ended\n");
 
   Bun.serve({
     hostname: "0.0.0.0",
@@ -51,7 +53,19 @@ const main = async () => {
           const webhookId = req.headers.get("webhook-id");
           const webhookTimestamp = req.headers.get("webhook-timestamp");
 
+          // Require webhook signature verification when WEBHOOK_SECRET is configured
           if (config.webhookSecret) {
+            if (!signature || !webhookId || !webhookTimestamp) {
+              console.error("[ERROR] Missing webhook signature headers");
+              return new Response(
+                JSON.stringify({ error: "Missing webhook signature" }),
+                {
+                  status: 401,
+                  headers: { "Content-Type": "application/json" },
+                }
+              );
+            }
+
             const isValid = await verifyWebhookSignature(
               bodyText,
               signature,
@@ -61,7 +75,7 @@ const main = async () => {
             );
 
             if (!isValid) {
-              console.error("❌ Invalid webhook signature");
+              console.error("[ERROR] Invalid webhook signature");
               return new Response(
                 JSON.stringify({ error: "Invalid signature" }),
                 {
@@ -70,10 +84,6 @@ const main = async () => {
                 }
               );
             }
-          } else if (signature) {
-            console.warn(
-              "⚠️  Webhook signature provided but WEBHOOK_SECRET not configured"
-            );
           }
 
           const payload = JSON.parse(bodyText) as RenderWebhookPayload;
@@ -96,7 +106,7 @@ const main = async () => {
             config.renderBranch,
             config.linearTicketPrefixes
           ).catch((error) => {
-            console.error("❌ Error processing webhook:", error);
+            console.error("[ERROR] Error processing webhook");
           });
 
           return new Response(
@@ -107,7 +117,7 @@ const main = async () => {
             }
           );
         } catch (error) {
-          console.error("❌ Error parsing webhook payload:", error);
+          console.error("[ERROR] Error parsing webhook payload");
           return new Response(JSON.stringify({ error: "Invalid payload" }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
@@ -119,16 +129,16 @@ const main = async () => {
     },
   });
 
-  console.log("✨ Webhook server is running. Press Ctrl+C to stop.\n");
+  console.log("[STARTUP] Webhook server is running. Press Ctrl+C to stop.\n");
 
   process.on("SIGINT", () => {
-    console.log("\n🛑 Shutting down gracefully...");
+    console.log("\n[SHUTDOWN] Shutting down gracefully...");
     closeDatabase();
     process.exit(0);
   });
 
   process.on("SIGTERM", () => {
-    console.log("\n🛑 Shutting down gracefully...");
+    console.log("\n[SHUTDOWN] Shutting down gracefully...");
     closeDatabase();
     process.exit(0);
   });

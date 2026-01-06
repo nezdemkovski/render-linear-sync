@@ -6,12 +6,7 @@ export const verifyWebhookSignature = async (
   secret: string
 ): Promise<boolean> => {
   if (!signature || !secret || !webhookId || !webhookTimestamp) {
-    console.error("❌ Missing signature components:", {
-      hasSignature: !!signature,
-      hasSecret: !!secret,
-      hasWebhookId: !!webhookId,
-      hasWebhookTimestamp: !!webhookTimestamp,
-    });
+    console.error("[ERROR] Missing webhook signature components");
     return false;
   }
 
@@ -32,7 +27,7 @@ export const verifyWebhookSignature = async (
         (c) => c.charCodeAt(0)
       );
     } catch (error) {
-      console.error("❌ Error decoding provided signature:", error);
+      console.error("[ERROR] Error decoding webhook signature");
       return false;
     }
 
@@ -70,10 +65,7 @@ export const verifyWebhookSignature = async (
     const computedSignatureBytes = new Uint8Array(signatureBuffer);
 
     if (providedSignatureBytes.length !== computedSignatureBytes.length) {
-      console.error("❌ Signature length mismatch:", {
-        providedLength: providedSignatureBytes.length,
-        computedLength: computedSignatureBytes.length,
-      });
+      console.error("[ERROR] Webhook signature length mismatch");
       return false;
     }
 
@@ -86,22 +78,12 @@ export const verifyWebhookSignature = async (
     }
 
     if (!isValid) {
-      console.error("❌ Signature mismatch:", {
-        providedSignaturePreview: providedSignature.substring(0, 50),
-        computedSignatureBase64: btoa(
-          String.fromCharCode(...computedSignatureBytes)
-        ).substring(0, 50),
-        webhookId,
-        webhookTimestamp,
-        signedStringLength: signedString.length,
-      });
+      console.error("[ERROR] Webhook signature verification failed");
     }
 
     return isValid;
-
-    return false;
   } catch (error) {
-    console.error("❌ Error verifying signature:", error);
+    console.error("[ERROR] Error verifying webhook signature");
     return false;
   }
 };

@@ -41,16 +41,20 @@ export const validateConfig = (config: Config) => {
     .map(([key]) => key);
 
   if (missingVars.length > 0) {
-    console.error("❌ Missing required environment variables:");
+    console.error("[ERROR] Missing required environment variables:");
     missingVars.forEach((varName) => {
       console.error(`   - ${varName}`);
     });
-    console.error("\n💡 Please check your .env file or environment variables");
+    console.error(
+      "[INFO] Please check your .env file or environment variables"
+    );
     process.exit(1);
   }
 
   if (config.linearTicketPrefixes.length === 0) {
-    console.error("❌ LINEAR_TICKET_PREFIXES must contain at least one prefix");
+    console.error(
+      "[ERROR] LINEAR_TICKET_PREFIXES must contain at least one prefix"
+    );
     process.exit(1);
   }
 
@@ -58,5 +62,16 @@ export const validateConfig = (config: Config) => {
     console.warn(
       'LINEAR_API_KEY might be invalid - should start with "lin_api_"'
     );
+  }
+
+  if (!config.dryRun && !config.webhookSecret) {
+    console.error("[ERROR] WEBHOOK_SECRET is required in production mode");
+    console.error(
+      "[INFO] Set DRY_RUN=true for testing without webhook verification"
+    );
+    console.error(
+      "[INFO] Or set WEBHOOK_SECRET to enable webhook signature verification"
+    );
+    process.exit(1);
   }
 };

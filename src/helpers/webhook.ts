@@ -14,7 +14,7 @@ export const processDeployWebhook = async (
 ) => {
   if (payload.data.status !== "succeeded") {
     console.log(
-      `⏭️  Skipping deploy ${payload.data.id} - status: ${payload.data.status}`
+      `[SKIP] Skipping deploy ${payload.data.id} - status: ${payload.data.status}`
     );
     return;
   }
@@ -25,20 +25,22 @@ export const processDeployWebhook = async (
   if (branch) {
     const service = await getService(renderApiKey, serviceId);
     if (!service) {
-      console.log(`⚠️  Could not fetch service ${serviceId} to check branch`);
+      console.log(
+        `[WARN] Could not fetch service ${serviceId} to check branch`
+      );
       return;
     }
 
     if (service.branch !== branch) {
       console.log(
-        `⏭️  Skipping deploy ${payload.data.id} - service ${serviceName} branch "${service.branch}" doesn't match "${branch}"`
+        `[SKIP] Skipping deploy ${payload.data.id} - service ${serviceName} branch "${service.branch}" doesn't match "${branch}"`
       );
       return;
     }
   }
 
   console.log(
-    `\n🚀 Processing deploy webhook: ${serviceName} (${payload.data.id})`
+    `\n[INFO] Processing deploy webhook: ${serviceName} (${payload.data.id})`
   );
 
   const deploys = await listDeploys(renderApiKey, serviceId, 5);
@@ -48,17 +50,19 @@ export const processDeployWebhook = async (
     ) || null;
 
   if (!matchingDeploy) {
-    console.log(`⚠️  No matching deploy found for service ${serviceName}`);
+    console.log(`[WARN] No matching deploy found for service ${serviceName}`);
     return;
   }
 
   if (wasDeployProcessed(matchingDeploy.id)) {
-    console.log(`⏭️  Deploy ${matchingDeploy.id} already processed`);
+    console.log(`[SKIP] Deploy ${matchingDeploy.id} already processed`);
     return;
   }
 
   if (!matchingDeploy.commit?.message) {
-    console.log(`⚠️  No commit message found for deploy ${matchingDeploy.id}`);
+    console.log(
+      `[WARN] No commit message found for deploy ${matchingDeploy.id}`
+    );
     return;
   }
 
@@ -69,7 +73,7 @@ export const processDeployWebhook = async (
 
   if (tickets.length === 0) {
     console.log(
-      `🎫 No tickets found in commit: ${matchingDeploy.commit.message.substring(
+      `[INFO] No tickets found in commit: ${matchingDeploy.commit.message.substring(
         0,
         60
       )}...`
@@ -78,7 +82,7 @@ export const processDeployWebhook = async (
   }
 
   console.log(
-    `🎫 Found ${tickets.length} ticket(s): ${tickets.join(
+    `[INFO] Found ${tickets.length} ticket(s): ${tickets.join(
       ", "
     )} in commit: ${matchingDeploy.commit.message.substring(0, 60)}...`
   );

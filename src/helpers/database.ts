@@ -42,7 +42,7 @@ export const initDatabase = (dbPath: string = "./render-linear-sync.db") => {
     CREATE INDEX IF NOT EXISTS idx_service_id ON processed_tickets(service_id)
   `);
 
-  console.log(`📊 Database initialized at ${dbPath}`);
+  console.log(`[INFO] Database initialized at ${dbPath}`);
 
   return db;
 };

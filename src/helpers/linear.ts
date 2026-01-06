@@ -54,18 +54,16 @@ export const getLinearIssue = async (
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       console.error(
-        `Failed to get Linear issue ${issueIdentifier}: ${response.status} ${response.statusText}`
+        `[ERROR] Failed to get Linear issue ${issueIdentifier}: ${response.status}`
       );
-      console.error(`Response: ${errorText}`);
       return null;
     }
 
     const data = (await response.json()) as { data: { issue: LinearIssue } };
     return data.data.issue;
   } catch (error) {
-    console.error("Error getting Linear issue:", error);
+    console.error(`[ERROR] Error getting Linear issue ${issueIdentifier}`);
     return null;
   }
 };
@@ -95,7 +93,7 @@ export const getDoneState = async (apiKey: string) => {
 
     if (!response.ok) {
       console.error(
-        `Failed to get Linear states: ${response.status} ${response.statusText}`
+        `[ERROR] Failed to get Linear states: ${response.status} ${response.statusText}`
       );
       return null;
     }
@@ -114,7 +112,7 @@ export const getDoneState = async (apiKey: string) => {
 
     return doneState || null;
   } catch (error) {
-    console.error("Error getting Linear states:", error);
+    console.error("[ERROR] Error getting Linear states");
     return null;
   }
 };
@@ -157,7 +155,7 @@ export const updateIssueState = async (
 
     if (!response.ok) {
       console.error(
-        `Failed to update Linear issue: ${response.status} ${response.statusText}`
+        `[ERROR] Failed to update Linear issue: ${response.status} ${response.statusText}`
       );
       return false;
     }
@@ -173,15 +171,15 @@ export const updateIssueState = async (
 
     if (data.data.issueUpdate.success) {
       console.log(
-        `✅ Issue ${data.data.issueUpdate.issue.identifier} moved to ${data.data.issueUpdate.issue.state.name}`
+        `[SUCCESS] Issue ${data.data.issueUpdate.issue.identifier} moved to ${data.data.issueUpdate.issue.state.name}`
       );
       return true;
     } else {
-      console.error("Failed to update issue state");
+      console.error("[ERROR] Failed to update issue state");
       return false;
     }
   } catch (error) {
-    console.error("Error updating Linear issue:", error);
+    console.error("[ERROR] Error updating Linear issue");
     return false;
   }
 };
@@ -189,19 +187,19 @@ export const updateIssueState = async (
 export const moveIssueToDone = async (apiKey: string, issueId: string) => {
   const doneState = await getDoneState(apiKey);
   if (!doneState) {
-    console.error('Could not find "Done" state in Linear');
+    console.error('[ERROR] Could not find "Done" state in Linear');
     return false;
   }
 
   const issue = await getLinearIssue(apiKey, issueId);
   if (!issue) {
-    console.error(`Issue ${issueId} not found in Linear`);
+    console.error(`[ERROR] Issue ${issueId} not found in Linear`);
     return false;
   }
 
   if (issue.state.id === doneState.id) {
     console.log(
-      `✅ Issue ${issue.identifier} is already in ${issue.state.name} state`
+      `[INFO] Issue ${issue.identifier} is already in ${issue.state.name} state`
     );
     return true;
   }
@@ -219,7 +217,7 @@ export const processLinearTickets = async (
     return;
   }
 
-  console.log(`\n🔍 Checking ${tickets.length} Linear tickets...`);
+  console.log(`\n[INFO] Checking ${tickets.length} Linear tickets...`);
 
   const ticketPromises = tickets.map(async (ticketId) => {
     try {
@@ -240,10 +238,7 @@ export const processLinearTickets = async (
 
   for (const { ticketId, issue, error } of ticketResults) {
     if (error || !issue) {
-      console.error(
-        `❌ Failed to fetch ${ticketId}:`,
-        error || "Issue not found"
-      );
+      console.error(`[ERROR] Failed to fetch ticket ${ticketId}`);
       errors++;
       continue;
     }
@@ -257,7 +252,7 @@ export const processLinearTickets = async (
     } else {
       if (isDryRun) {
         console.log(
-          `🔄 [DRY RUN] Would move ${ticketId} (${issue.title}) to Done (currently: ${issue.state.name})`
+          `[DRY-RUN] Would move ${ticketId} (${issue.title}) to Done (currently: ${issue.state.name})`
         );
         movedToDone++;
       } else {
@@ -306,7 +301,7 @@ export const processLinearTickets = async (
         }
       } else {
         console.error(
-          `❌ Failed to move ${ticketId} to Done - will retry on next run`
+          `[ERROR] Failed to move ${ticketId} to Done - will retry on next run`
         );
         errors++;
       }
@@ -314,20 +309,22 @@ export const processLinearTickets = async (
   }
 
   if (alreadyDone > 0) {
-    console.log(`✅ ${alreadyDone} tickets are already completed/announced`);
+    console.log(
+      `[INFO] ${alreadyDone} tickets are already completed/announced`
+    );
   }
 
   if (movedToDone > 0) {
     if (isDryRun) {
-      console.log(`🔄 ${movedToDone} tickets would be moved to Done (DRY RUN)`);
+      console.log(`[DRY-RUN] ${movedToDone} tickets would be moved to Done`);
     } else {
-      console.log(`✅ ${movedToDone} tickets moved to Done`);
+      console.log(`[SUCCESS] ${movedToDone} tickets moved to Done`);
     }
   }
 
   if (errors > 0) {
     console.log(
-      `❌ ${errors} tickets had errors (will be retried on next run)`
+      `[WARN] ${errors} tickets had errors (will be retried on next run)`
     );
   }
 };

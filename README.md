@@ -4,12 +4,14 @@ A tool that synchronizes Render deployments with Linear issue tracking. It autom
 
 ## Features
 
-- 🔄 Monitors Render service deployments
-- 📊 Detects new deployments across all services in your workspace
-- 🔍 Extracts Linear ticket references from Git commit messages
-- 🎫 Automatically updates Linear ticket statuses
-- 💾 Tracks processed deploys in SQLite database
-- 🧪 Dry run mode for testing before making changes
+- Monitors Render service deployments
+- Detects new deployments across all services in your workspace
+- Extracts Linear ticket references from Git commit messages
+- Automatically updates Linear ticket statuses
+- Tracks processed deploys in SQLite database
+- Dry run mode for testing before making changes
+- Webhook signature verification for security
+- Professional structured logging
 
 ## Prerequisites
 
@@ -51,10 +53,13 @@ RENDER_API_KEY=rnd_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 LINEAR_TICKET_PREFIXES=HQ,DEV,BUG
 RENDER_WORKSPACE_ID=tea-xxxxxxxxxxxxxxxx
 RENDER_BRANCH=main
+WEBHOOK_SECRET=whsec_your-signing-secret-from-render
 DRY_RUN=true
 DB_PATH=./render-linear-sync.db
 PORT=3000
 ```
+
+**Note**: `WEBHOOK_SECRET` is required in production mode. Set `DRY_RUN=true` to test without it.
 
 ### Getting API Keys
 
@@ -63,7 +68,7 @@ PORT=3000
 - **Linear Ticket Prefixes**: Comma-separated list of ticket prefixes to look for in commit messages (e.g., `HQ,DEV,BUG`)
 - **Render Workspace ID** (optional): Leave empty to monitor all workspaces, or set to a specific workspace ID
 - **Render Branch** (optional): Branch to filter deployments (defaults to "main")
-- **Webhook Secret** (optional but recommended): Copy from Render webhook settings (starts with `whsec_`)
+- **Webhook Secret** (required in production, optional in dry-run mode): Copy from Render webhook settings (starts with `whsec_`)
 
 ## Usage
 
@@ -93,7 +98,9 @@ The server will start on port 3000 (or the port specified in `PORT` env var) and
    WEBHOOK_SECRET=whsec_your-signing-secret-from-render
    ```
 
-6. The webhook will automatically process deployments and update Linear tickets
+6. **Important**: `WEBHOOK_SECRET` is **required in production mode** for security. The application will refuse to start without it unless `DRY_RUN=true` is set.
+
+7. The webhook will automatically process deployments and update Linear tickets
 
 ### Docker Compose (Local Build)
 
@@ -142,11 +149,21 @@ docker run --rm -it --env-file .env ghcr.io/nezdemkovski/render-linear-sync:late
 ## How It Works
 
 1. **Webhook receiver** listens for `deploy.ended` events from Render
-2. **Filters by branch** (default: "main") to only process production deployments
-3. **Fetches deploy details** from Render API to get commit messages
-4. **Extracts Linear ticket IDs** from commit messages (e.g., HQ-123, HQ-456)
-5. **Checks ticket statuses** in Linear and moves them to "Done" if needed
-6. **Tracks processed deploys** in SQLite database to avoid duplicates
+2. **Verifies webhook signatures** to ensure requests are authentic (required in production)
+3. **Filters by branch** (default: "main") to only process production deployments
+4. **Fetches deploy details** from Render API to get commit messages
+5. **Extracts Linear ticket IDs** from commit messages (e.g., HQ-123, HQ-456)
+6. **Checks ticket statuses** in Linear and moves them to "Done" if needed
+7. **Tracks processed deploys** in SQLite database to avoid duplicates
+
+## Security
+
+The application includes several security features:
+
+- **Webhook Signature Verification**: All webhooks are verified using HMAC-SHA256 signatures. `WEBHOOK_SECRET` is required in production mode.
+- **Structured Logging**: Logs are sanitized to prevent information disclosure. No sensitive data (API keys, signatures, full error details) is logged.
+- **Input Validation**: Webhook payloads are validated before processing.
+- **Parameterized Queries**: All database queries use parameterized statements to prevent SQL injection.
 
 ## Configuration
 
@@ -181,6 +198,7 @@ When dry run is enabled, the tool will:
 - Show what tickets would be moved
 - Not save anything to the database
 - Not actually update Linear ticket statuses
+- Allow running without `WEBHOOK_SECRET` (useful for local testing)
 
 ### Database
 
@@ -213,13 +231,14 @@ This is a comma-separated list of prefixes. The system will look for tickets mat
 ## Output Example
 
 ```
-🚀 Starting Render-Linear Sync Webhook Receiver...
-📡 Listening on port 3000
-🔗 Webhook URL: http://0.0.0.0:3000/webhook
+[STARTUP] Starting Render-Linear Sync Webhook Receiver
+[INFO] Listening on port 3000
+[INFO] Webhook URL: http://0.0.0.0:3000/webhook
+[INFO] Event: deploy.ended
 
-🚀 Processing deploy webhook: api-service (evt-abc123)
-🎫 Found 1 ticket(s): HQ-1944 in commit: Fix login button styling
-🔍 Checking Linear ticket: HQ-1944
-🔄 Would move HQ-1944 (Fix login button styling) to Done (currently: In Progress)
-✅ Webhook processed successfully
+[INFO] Processing deploy webhook: api-service (evt-abc123)
+[INFO] Found 1 ticket(s): HQ-1944 in commit: Fix login button styling
+[INFO] Checking 1 Linear tickets...
+[DRY-RUN] Would move HQ-1944 (Fix login button styling) to Done (currently: In Progress)
+[SUCCESS] 1 tickets moved to Done
 ```

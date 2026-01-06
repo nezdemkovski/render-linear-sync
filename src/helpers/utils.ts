@@ -20,7 +20,7 @@ export async function retry<T>(
       }
 
       const delay = baseDelay * Math.pow(2, attempt - 1);
-      console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
+      console.log(`[INFO] Attempt ${attempt} failed, retrying in ${delay}ms...`);
       await sleep(delay);
     }
   }
