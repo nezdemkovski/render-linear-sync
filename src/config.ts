@@ -19,11 +19,15 @@ export const loadConfig = () => {
     process.exit(1);
   }
 
+  const renderBranchEnv = process.env.RENDER_BRANCH;
+  const renderBranch =
+    renderBranchEnv === "" ? undefined : renderBranchEnv || "main";
+
   const config: Config = {
     linearApiKey: process.env.LINEAR_API_KEY!,
     renderApiKey: process.env.RENDER_API_KEY!,
     renderWorkspaceId: process.env.RENDER_WORKSPACE_ID,
-    renderBranch: process.env.RENDER_BRANCH || "main",
+    renderBranch,
     webhookSecret: process.env.WEBHOOK_SECRET,
     dryRun: process.env.DRY_RUN === "true",
     dbPath: process.env.DB_PATH || "./render-linear-sync.db",
