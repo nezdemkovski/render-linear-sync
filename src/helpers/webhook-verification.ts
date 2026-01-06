@@ -23,7 +23,6 @@ export const verifyWebhookSignature = async (
       providedSignature = providedSignature.slice(3);
     }
 
-    const signedPayload = `${webhookId}.${webhookTimestamp}.${payload}`;
     const encoder = new TextEncoder();
 
     let providedSignatureBytes: Uint8Array;
@@ -37,78 +36,57 @@ export const verifyWebhookSignature = async (
       return false;
     }
 
-    const secretsToTry = secret.startsWith("whsec_")
-      ? [secret, secret.slice(6)]
-      : [`whsec_${secret}`, secret];
+    const normalizedSecret = secret.startsWith("whsec_")
+      ? secret.slice(6)
+      : secret;
 
-    for (let i = 0; i < secretsToTry.length; i++) {
-      const testSecret = secretsToTry[i];
-      const key = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(testSecret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
-      );
+    const signedString = `${webhookId}.${webhookTimestamp}.${payload}.${normalizedSecret}`;
 
-      const signatureBuffer = await crypto.subtle.sign(
-        "HMAC",
-        key,
-        encoder.encode(signedPayload)
-      );
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(normalizedSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
 
-      const computedSignatureBytes = new Uint8Array(signatureBuffer);
-      const computedSignatureBase64 = btoa(
-        String.fromCharCode(...computedSignatureBytes)
-      );
+    const signatureBuffer = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(signedString)
+    );
 
-      if (providedSignatureBytes.length !== computedSignatureBytes.length) {
-        console.log(
-          `🔍 Attempt ${
-            i + 1
-          }: Length mismatch (secret has whsec_ prefix: ${testSecret.startsWith(
-            "whsec_"
-          )})`
-        );
-        continue;
-      }
+    const computedSignatureBytes = new Uint8Array(signatureBuffer);
 
-      let isValid = true;
-      for (let j = 0; j < providedSignatureBytes.length; j++) {
-        if (providedSignatureBytes[j] !== computedSignatureBytes[j]) {
-          isValid = false;
-          break;
-        }
-      }
+    if (providedSignatureBytes.length !== computedSignatureBytes.length) {
+      console.error("❌ Signature length mismatch:", {
+        providedLength: providedSignatureBytes.length,
+        computedLength: computedSignatureBytes.length,
+      });
+      return false;
+    }
 
-      if (isValid) {
-        console.log(
-          `✅ Signature verified (using secret ${
-            testSecret.startsWith("whsec_") ? "with" : "without"
-          } whsec_ prefix)`
-        );
-        return true;
-      } else {
-        console.log(
-          `🔍 Attempt ${
-            i + 1
-          }: Signature mismatch (secret has whsec_ prefix: ${testSecret.startsWith(
-            "whsec_"
-          )})`
-        );
+    let isValid = true;
+    for (let i = 0; i < providedSignatureBytes.length; i++) {
+      if (providedSignatureBytes[i] !== computedSignatureBytes[i]) {
+        isValid = false;
+        break;
       }
     }
 
-    console.error(
-      "❌ Signature mismatch (tried both with and without whsec_ prefix):",
-      {
+    if (!isValid) {
+      console.error("❌ Signature mismatch:", {
         providedSignaturePreview: providedSignature.substring(0, 50),
+        computedSignatureBase64: btoa(
+          String.fromCharCode(...computedSignatureBytes)
+        ).substring(0, 50),
         webhookId,
         webhookTimestamp,
-        signedPayloadLength: signedPayload.length,
-        payloadPreview: payload.substring(0, 100),
-      }
-    );
+        signedStringLength: signedString.length,
+      });
+    }
+
+    return isValid;
 
     return false;
   } catch (error) {
