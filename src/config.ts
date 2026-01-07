@@ -22,6 +22,7 @@ export const loadConfig = () => {
     linearTicketPrefixes,
     dryRun: process.env.DRY_RUN === "true",
     dbPath: process.env.DB_PATH || "./render-linear-sync.db",
+    githubToken: process.env.GITHUB_TOKEN,
   };
 
   validateConfig(config);

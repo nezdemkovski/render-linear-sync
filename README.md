@@ -54,6 +54,7 @@ LINEAR_TICKET_PREFIXES=HQ,DEV,BUG
 RENDER_WORKSPACE_ID=tea-xxxxxxxxxxxxxxxx
 RENDER_BRANCH=main
 WEBHOOK_SECRET=whsec_your-signing-secret-from-render
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 DRY_RUN=true
 DB_PATH=./render-linear-sync.db
 PORT=3000
@@ -69,6 +70,7 @@ PORT=3000
 - **Render Workspace ID** (optional): Leave empty to monitor all workspaces, or set to a specific workspace ID
 - **Render Branch** (optional): Branch to filter deployments (defaults to "main")
 - **Webhook Secret** (required in production, optional in dry-run mode): Copy from Render webhook settings (starts with `whsec_`)
+- **GitHub Token** (optional): GitHub personal access token for fetching commit history from merge commits. Required to extract tickets from all commits in a merge, not just the merge commit message. Create at [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) (no special permissions needed)
 
 ## Usage
 
@@ -151,10 +153,24 @@ docker run --rm -it --env-file .env ghcr.io/nezdemkovski/render-linear-sync:late
 1. **Webhook receiver** listens for `deploy.ended` events from Render
 2. **Verifies webhook signatures** to ensure requests are authentic (required in production)
 3. **Filters by branch** (default: "main") to only process production deployments
-4. **Fetches deploy details** from Render API to get commit messages
-5. **Extracts Linear ticket IDs** from commit messages (e.g., HQ-123, HQ-456)
-6. **Checks ticket statuses** in Linear and moves them to "Done" if needed
-7. **Tracks processed deploys** in SQLite database to avoid duplicates
+4. **Tracks last processed commit** per service/branch in SQLite database
+5. **Fetches commit range** from GitHub API between last and current deploy
+6. **Extracts Linear ticket IDs** from all commits in the range (e.g., HQ-123, HQ-456)
+7. **Checks ticket statuses** in Linear and moves them to "Done" if needed
+8. **Updates last processed commit** to avoid re-processing
+
+### Commit Range Tracking
+
+The tool tracks the last successfully processed commit for each service/branch combination:
+
+- **First deploy**: Processes only the current commit
+- **Subsequent deploys**: Fetches all commits between the last processed commit and the current commit using GitHub's compare API (`/repos/{owner}/{repo}/compare/{base}...{head}`)
+- **Merge commits**: Automatically captures all individual commits in the merge, not just the merge commit message
+- **Multiple branches**: Each branch (dev, main, etc.) is tracked independently
+
+**Example**: When you merge 10 commits from `dev` to `main`, the tool will extract tickets from all 10 commits, not just the merge commit message.
+
+**GitHub Token**: Required for private repositories. For public repositories, it works without a token but with lower rate limits (60 requests/hour vs 5000/hour with token). Create a token at [GitHub Settings → Personal Access Tokens](https://github.com/settings/tokens) (no special permissions needed).
 
 ## Security
 
@@ -212,11 +228,21 @@ DB_PATH=/path/to/your/database.db
 
 The database stores:
 
+**Processed Tickets** (`processed_tickets` table):
+
 - Deploy ID and service information
 - Ticket ID and title
 - Previous and new states
 - Commit ID and message
 - Timestamp of processing
+
+**Last Processed Commits** (`last_processed_commits` table):
+
+- Service ID and branch
+- Last successfully processed commit SHA
+- Timestamp of last update
+
+This allows the tool to fetch only new commits since the last deploy, ensuring all tickets from merged commits are captured.
 
 ### Ticket Prefixes
 
@@ -230,15 +256,31 @@ This is a comma-separated list of prefixes. The system will look for tickets mat
 
 ## Output Example
 
+### Single Commit
+
 ```
 [STARTUP] Starting Render-Linear Sync Webhook Receiver
 [INFO] Listening on port 3000
 [INFO] Webhook URL: http://0.0.0.0:3000/webhook
-[INFO] Event: deploy.ended
 
 [INFO] Processing deploy webhook: api-service (evt-abc123)
-[INFO] Found 1 ticket(s): HQ-1944 in commit: Fix login button styling
+[INFO] Found 1 ticket(s): HQ-1944 in 1 commit(s)
 [INFO] Checking 1 Linear tickets...
-[DRY-RUN] Would move HQ-1944 (Fix login button styling) to Done (currently: In Progress)
+[SUCCESS] Issue HQ-1944 moved to Done
 [SUCCESS] 1 tickets moved to Done
+```
+
+### Merge Commit (Multiple Commits)
+
+```
+[INFO] Processing deploy webhook: noona-api (evt-d5eiccadbo4c738qvol0)
+[INFO] Fetching commits between abc123 and def456
+[INFO] Found 5 commit(s) in range
+[INFO] Found 3 ticket(s): HQ-100, HQ-101, HQ-102 in 5 commit(s)
+[INFO] Checking 3 Linear tickets...
+[SUCCESS] Issue HQ-100 moved to Done
+[SUCCESS] Issue HQ-101 moved to Done
+[SUCCESS] Issue HQ-102 is already in Done state
+[SUCCESS] 2 tickets moved to Done
+[SUCCESS] 1 tickets are already completed/announced
 ```

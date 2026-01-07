@@ -104,7 +104,8 @@ const main = async () => {
             config.linearApiKey,
             isDryRun,
             config.renderBranch,
-            config.linearTicketPrefixes
+            config.linearTicketPrefixes,
+            config.githubToken
           ).catch((error) => {
             console.error("[ERROR] Error processing webhook");
           });

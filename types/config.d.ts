@@ -7,4 +7,5 @@ export interface Config {
   linearTicketPrefixes: string[];
   dryRun: boolean;
   dbPath: string;
+  githubToken: string | undefined;
 }

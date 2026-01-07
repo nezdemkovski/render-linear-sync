@@ -1,5 +1,4 @@
 import { Database } from "bun:sqlite";
-import type { ProcessedTicket } from "../../types/database";
 
 let db: Database | null = null;
 
@@ -40,6 +39,25 @@ export const initDatabase = (dbPath: string = "./render-linear-sync.db") => {
 
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_service_id ON processed_tickets(service_id)
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_commit_id ON processed_tickets(commit_id)
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS last_processed_commits (
+      service_id TEXT NOT NULL,
+      service_name TEXT NOT NULL,
+      branch TEXT NOT NULL,
+      commit_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (service_id, branch)
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_last_commit_service_branch ON last_processed_commits(service_id, branch)
   `);
 
   console.log(`[INFO] Database initialized at ${dbPath}`);
@@ -107,45 +125,6 @@ export const saveProcessedTicket = (
   });
 };
 
-export const getProcessedTickets = (limit: number = 100) => {
-  const database = getDatabase();
-
-  const query = database.query(`
-    SELECT * FROM processed_tickets
-    ORDER BY processed_at DESC
-    LIMIT $limit
-  `);
-
-  return query.all({ $limit: limit }) as ProcessedTicket[];
-};
-
-export const getTicketHistory = (ticketId: string) => {
-  const database = getDatabase();
-
-  const query = database.query(`
-    SELECT * FROM processed_tickets
-    WHERE ticket_id = $ticketId
-    ORDER BY processed_at DESC
-  `);
-
-  return query.all({ $ticketId: ticketId }) as ProcessedTicket[];
-};
-
-export const wasDeployProcessed = (deployId: string) => {
-  const database = getDatabase();
-
-  const query = database.query(`
-    SELECT COUNT(*) as count FROM processed_tickets
-    WHERE deploy_id = $deployId
-  `);
-
-  const result = query.get({
-    $deployId: deployId,
-  }) as { count: number };
-
-  return result.count > 0;
-};
-
 export const wasTicketProcessedForDeploy = (
   ticketId: string,
   deployId: string
@@ -164,6 +143,61 @@ export const wasTicketProcessedForDeploy = (
   }) as { count: number };
 
   return result.count > 0;
+};
+
+export const getLastProcessedCommit = (
+  serviceId: string,
+  branch: string
+): string | null => {
+  const database = getDatabase();
+
+  const query = database.query(`
+    SELECT commit_id FROM last_processed_commits
+    WHERE service_id = $serviceId AND branch = $branch
+  `);
+
+  const result = query.get({
+    $serviceId: serviceId,
+    $branch: branch,
+  }) as { commit_id: string } | undefined;
+
+  return result?.commit_id || null;
+};
+
+export const setLastProcessedCommit = (
+  serviceId: string,
+  serviceName: string,
+  branch: string,
+  commitId: string
+) => {
+  const database = getDatabase();
+
+  const query = database.query(`
+    INSERT INTO last_processed_commits (
+      service_id,
+      service_name,
+      branch,
+      commit_id,
+      updated_at
+    ) VALUES (
+      $serviceId,
+      $serviceName,
+      $branch,
+      $commitId,
+      $updatedAt
+    )
+    ON CONFLICT(service_id, branch) DO UPDATE SET
+      commit_id = $commitId,
+      updated_at = $updatedAt
+  `);
+
+  query.run({
+    $serviceId: serviceId,
+    $serviceName: serviceName,
+    $branch: branch,
+    $commitId: commitId,
+    $updatedAt: new Date().toISOString(),
+  });
 };
 
 export const closeDatabase = () => {
