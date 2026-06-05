@@ -1,5 +1,5 @@
 import { retryWithBackoff } from "./utils";
-import type { RenderService, RenderDeploy } from "../../types/render";
+import type { RenderService, RenderDeploy, RenderEvent } from "../../types/render";
 
 const RENDER_API_BASE = "https://api.render.com/v1";
 
@@ -82,6 +82,38 @@ export const getService = (apiKey: string, serviceId: string) => {
     try {
       const response = await renderApiRequest<RenderService>(
         `/services/${serviceId}`,
+        apiKey
+      );
+      return response;
+    } catch (error) {
+      return null;
+    }
+  });
+};
+
+export const getEvent = (apiKey: string, eventId: string) => {
+  return retryWithBackoff(async () => {
+    try {
+      const response = await renderApiRequest<RenderEvent>(
+        `/events/${eventId}`,
+        apiKey
+      );
+      return response;
+    } catch (error) {
+      return null;
+    }
+  });
+};
+
+export const getDeploy = (
+  apiKey: string,
+  serviceId: string,
+  deployId: string
+) => {
+  return retryWithBackoff(async () => {
+    try {
+      const response = await renderApiRequest<RenderDeploy>(
+        `/services/${serviceId}/deploys/${deployId}`,
         apiKey
       );
       return response;

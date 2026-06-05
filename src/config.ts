@@ -3,7 +3,7 @@ import type { Config } from "../types/config";
 export const loadConfig = () => {
   const renderBranchEnv = process.env.RENDER_BRANCH;
   const renderBranch =
-    renderBranchEnv === "" ? undefined : renderBranchEnv || "main";
+    renderBranchEnv === undefined ? "main" : renderBranchEnv;
 
   const linearTicketPrefixesEnv = process.env.LINEAR_TICKET_PREFIXES;
   const linearTicketPrefixes = linearTicketPrefixesEnv

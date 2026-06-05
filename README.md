@@ -68,7 +68,7 @@ PORT=3000
 - **Render API Key**: Go to [Render Dashboard → Account Settings → API Keys](https://dashboard.render.com/u/settings#api-keys) and create a new API key
 - **Linear Ticket Prefixes**: Comma-separated list of ticket prefixes to look for in commit messages (e.g., `HQ,DEV,BUG`)
 - **Render Workspace ID** (optional): Leave empty to monitor all workspaces, or set to a specific workspace ID
-- **Render Branch** (optional): Branch to filter deployments (defaults to "main")
+- **Render Branch** (optional): Comma-separated branches to process (defaults to `main`; set empty to allow all detectable branches)
 - **Webhook Secret** (required in production, optional in dry-run mode): Copy from Render webhook settings (starts with `whsec_`)
 - **GitHub Token** (optional): GitHub personal access token for fetching commit history from merge commits. Required to extract tickets from all commits in a merge, not just the merge commit message. Create at [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) (no special permissions needed)
 
@@ -152,12 +152,13 @@ docker run --rm -it --env-file .env ghcr.io/nezdemkovski/render-linear-sync:late
 
 1. **Webhook receiver** listens for `deploy.ended` events from Render
 2. **Verifies webhook signatures** to ensure requests are authentic (required in production)
-3. **Filters by branch** (default: "main") to only process production deployments
-4. **Tracks last processed commit** per service/branch in SQLite database
-5. **Fetches commit range** from GitHub API between last and current deploy
-6. **Extracts Linear ticket IDs** from all commits in the range (e.g., HQ-123, HQ-456)
-7. **Checks ticket statuses** in Linear and moves them to "Done" if needed
-8. **Updates last processed commit** to avoid re-processing
+3. **Filters by branch** (default: "main")
+4. **Resolves the source commit** from Render's Git metadata, or from `deploy.image.ref` when deploy hooks pass a full-SHA `imgURL`
+5. **Tracks last processed commit** per service/branch in SQLite database
+6. **Fetches commit range** from GitHub API between last and current deploy
+7. **Extracts Linear ticket IDs** from all commits in the range (e.g., HQ-123, HQ-456)
+8. **Checks ticket statuses** in Linear and moves them to "Done" if needed
+9. **Updates last processed commit** to avoid re-processing
 
 ### Commit Range Tracking
 
@@ -166,7 +167,7 @@ The tool tracks the last successfully processed commit for each service/branch c
 - **First deploy**: Processes only the current commit
 - **Subsequent deploys**: Fetches all commits between the last processed commit and the current commit using GitHub's compare API (`/repos/{owner}/{repo}/compare/{base}...{head}`)
 - **Merge commits**: Automatically captures all individual commits in the merge, not just the merge commit message
-- **Multiple branches**: Each branch (dev, main, etc.) is tracked independently
+- **Multiple branches**: If configured, each branch is tracked independently
 
 **Example**: When you merge 10 commits from `dev` to `main`, the tool will extract tickets from all 10 commits, not just the merge commit message.
 
@@ -185,13 +186,13 @@ The application includes several security features:
 
 ### Branch Filtering
 
-By default, the webhook only processes deployments from the `main` branch. To change this:
+By default, the webhook only processes deployments from the `main` branch. To keep only production deploys closing tickets, leave:
 
 ```env
-RENDER_BRANCH=master
+RENDER_BRANCH=main
 ```
 
-Or set to empty to process all branches:
+Or set to empty to process all detectable branches:
 
 ```env
 RENDER_BRANCH=

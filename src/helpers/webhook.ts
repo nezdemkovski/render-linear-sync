@@ -1,9 +1,26 @@
-import { listDeploys, getService } from "./render";
+import { listDeploys, getService, getEvent, getDeploy } from "./render";
 import { extractTicketsFromCommit, processLinearTickets } from "./linear";
 import { getLastProcessedCommit, setLastProcessedCommit } from "./database";
-import { parseGitHubRepo, getCommitsBetween } from "./github";
+import { getCommit, getCommitsBetween, parseGitHubRepo } from "./github";
+import { parseImageCommitRef } from "./image";
 import type { DeployTicketInfo } from "../../types/linear";
+import type { RenderDeploy } from "../../types/render";
 import type { RenderWebhookPayload } from "../../types/webhook";
+
+const parseAllowedBranches = (
+  branchFilter: string | undefined
+): string[] | undefined => {
+  if (branchFilter === undefined) {
+    return undefined;
+  }
+
+  const branches = branchFilter
+    .split(",")
+    .map((branch) => branch.trim())
+    .filter(Boolean);
+
+  return branches.length > 0 ? branches : undefined;
+};
 
 export const processDeployWebhook = async (
   payload: RenderWebhookPayload,
@@ -30,102 +47,128 @@ export const processDeployWebhook = async (
     return;
   }
 
-  const serviceBranch = service.branch;
-  if (!serviceBranch) {
-    console.log(`[WARN] Service ${serviceName} has no branch information`);
-    return;
-  }
-
-  if (branch && serviceBranch !== branch) {
-    console.log(
-      `[SKIP] Skipping deploy ${payload.data.id} - service ${serviceName} branch "${serviceBranch}" doesn't match "${branch}"`
-    );
-    return;
-  }
-
   console.log(
     `\n[INFO] Processing deploy webhook: ${serviceName} (${payload.data.id})`
   );
 
-  const deploys = await listDeploys(renderApiKey, serviceId, 5);
-  const matchingDeploy =
-    deploys.find((deploy) => deploy.status === "live") || null;
+  const event = await getEvent(renderApiKey, payload.data.id);
+  const eventDeployId = event?.details?.deployId;
+
+  let matchingDeploy: RenderDeploy | null = null;
+  if (eventDeployId) {
+    matchingDeploy = await getDeploy(renderApiKey, serviceId, eventDeployId);
+  }
+
+  if (!matchingDeploy) {
+    const deploys = await listDeploys(renderApiKey, serviceId, 5);
+    matchingDeploy =
+      deploys.find((deploy) => deploy.status === "live") || null;
+  }
 
   if (!matchingDeploy) {
     console.log(`[WARN] No matching deploy found for service ${serviceName}`);
     return;
   }
 
-  if (!matchingDeploy.commit?.id) {
+  const allowedBranches = parseAllowedBranches(branch);
+  const gitRepo = service.repo ? parseGitHubRepo(service.repo) : null;
+  const imageCommitRef = parseImageCommitRef(matchingDeploy.image?.ref);
+  const sourceRepo = gitRepo || imageCommitRef;
+
+  let serviceBranch = service.branch || null;
+  if (!serviceBranch && imageCommitRef && allowedBranches?.length === 1) {
+    serviceBranch = allowedBranches[0] || null;
+  }
+
+  if (allowedBranches && serviceBranch && !allowedBranches.includes(serviceBranch)) {
+    console.log(
+      `[SKIP] Skipping deploy ${payload.data.id} - service ${serviceName} branch "${serviceBranch}" doesn't match "${allowedBranches.join(", ")}"`
+    );
+    return;
+  }
+
+  if (allowedBranches && !serviceBranch) {
+    console.log(
+      `[SKIP] Skipping deploy ${payload.data.id} - service ${serviceName} has no branch information`
+    );
+    return;
+  }
+
+  let currentCommitId = matchingDeploy.commit?.id || imageCommitRef?.commitId || null;
+  let currentCommitMessage = matchingDeploy.commit?.message || null;
+
+  if (!currentCommitMessage && imageCommitRef) {
+    const commit = await getCommit(
+      imageCommitRef.owner,
+      imageCommitRef.repo,
+      imageCommitRef.commitId,
+      githubToken
+    );
+    currentCommitMessage = commit?.message || null;
+  }
+
+  if (!currentCommitId) {
     console.log(`[WARN] No commit ID found for deploy ${matchingDeploy.id}`);
     return;
   }
 
-  const currentCommitId = matchingDeploy.commit.id;
   const lastProcessedCommitId = getLastProcessedCommit(
     serviceId,
-    serviceBranch
+    serviceBranch || "unknown"
   );
 
   let allTickets: string[] = [];
   let commitsToProcess: Array<{ id: string; message: string }> = [];
 
-  if (lastProcessedCommitId && service.repo) {
-    const repoInfo = parseGitHubRepo(service.repo);
-    if (repoInfo) {
-      console.log(
-        `[INFO] Fetching commits between ${lastProcessedCommitId.substring(
-          0,
-          7
-        )} and ${currentCommitId.substring(0, 7)}`
-      );
+  if (lastProcessedCommitId && sourceRepo) {
+    console.log(
+      `[INFO] Fetching commits between ${lastProcessedCommitId.substring(
+        0,
+        7
+      )} and ${currentCommitId.substring(0, 7)}`
+    );
 
-      const { commits, accessible } = await getCommitsBetween(
-        repoInfo.owner,
-        repoInfo.repo,
-        lastProcessedCommitId,
-        currentCommitId,
-        githubToken
-      );
+    const { commits, accessible } = await getCommitsBetween(
+      sourceRepo.owner,
+      sourceRepo.repo,
+      lastProcessedCommitId,
+      currentCommitId,
+      githubToken
+    );
 
-      if (accessible && commits.length > 0) {
-        console.log(`[INFO] Found ${commits.length} commit(s) in range`);
+    if (accessible && commits.length > 0) {
+      console.log(`[INFO] Found ${commits.length} commit(s) in range`);
 
-        for (const commit of commits) {
-          const commitTickets = extractTicketsFromCommit(
-            commit.message,
-            ticketPrefixes
-          );
-          if (commitTickets.length > 0) {
-            allTickets.push(...commitTickets);
-            commitsToProcess.push({
-              id: commit.sha,
-              message: commit.message,
-            });
-          }
-        }
-      } else if (!accessible) {
-        console.log(
-          `[WARN] Could not access GitHub commits, falling back to current commit only`
+      for (const commit of commits) {
+        const commitTickets = extractTicketsFromCommit(
+          commit.message,
+          ticketPrefixes
         );
+        if (commitTickets.length > 0) {
+          allTickets.push(...commitTickets);
+          commitsToProcess.push({
+            id: commit.sha,
+            message: commit.message,
+          });
+        }
       }
-    } else {
+    } else if (!accessible) {
       console.log(
-        `[WARN] Repository URL "${service.repo}" is not a GitHub repository`
+        `[WARN] Could not access GitHub commits, falling back to current commit only`
       );
     }
   }
 
-  if (commitsToProcess.length === 0 && matchingDeploy.commit?.message) {
+  if (commitsToProcess.length === 0 && currentCommitMessage) {
     const currentCommitTickets = extractTicketsFromCommit(
-      matchingDeploy.commit.message,
+      currentCommitMessage,
       ticketPrefixes
     );
     if (currentCommitTickets.length > 0) {
       allTickets.push(...currentCommitTickets);
       commitsToProcess.push({
         id: currentCommitId,
-        message: matchingDeploy.commit.message,
+        message: currentCommitMessage,
       });
     }
   }
@@ -141,7 +184,7 @@ export const processDeployWebhook = async (
     setLastProcessedCommit(
       serviceId,
       serviceName,
-      serviceBranch,
+      serviceBranch || "unknown",
       currentCommitId
     );
     return;
@@ -162,7 +205,7 @@ export const processDeployWebhook = async (
       commitMessage:
         commitsToProcess.length > 1
           ? `Range: ${commitsToProcess.length} commits`
-          : commitsToProcess[0]?.message || matchingDeploy.commit.message || "",
+          : commitsToProcess[0]?.message || currentCommitMessage || "",
       tickets: allTickets,
     },
   ];
@@ -172,7 +215,7 @@ export const processDeployWebhook = async (
   setLastProcessedCommit(
     serviceId,
     serviceName,
-    serviceBranch,
+    serviceBranch || "unknown",
     currentCommitId
   );
 };

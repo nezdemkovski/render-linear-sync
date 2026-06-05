@@ -69,3 +69,39 @@ export const getCommitsBetween = async (
     return { commits: [], accessible: false };
   }
 };
+
+export const getCommit = async (
+  owner: string,
+  repo: string,
+  sha: string,
+  githubToken?: string
+) => {
+  try {
+    const commitUrl = `${GITHUB_API_BASE}/repos/${owner}/${repo}/commits/${sha}`;
+
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "render-linear-sync",
+    };
+
+    if (githubToken) {
+      headers.Authorization = `Bearer ${githubToken}`;
+    }
+
+    const response = await fetch(commitUrl, { headers });
+    if (!response.ok) {
+      throw new Error(`GitHub API error: ${response.status}`);
+    }
+
+    const commit = (await response.json()) as GitHubCommit;
+    const title = commit.commit.message.split("\n")[0];
+
+    return {
+      sha: commit.sha,
+      message: title || commit.commit.message,
+      author: commit.author?.login || null,
+    };
+  } catch (error) {
+    return null;
+  }
+};

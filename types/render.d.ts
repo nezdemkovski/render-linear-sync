@@ -16,12 +16,28 @@ export interface RenderService {
 
 export interface RenderDeploy {
   id: string;
-  commit: {
+  commit?: {
     id: string;
     message: string;
     createdAt: string;
+  } | null;
+  image?: {
+    ref?: string;
+    sha?: string;
+    registryCredential?: string;
   };
   status: string;
   finishedAt?: string;
   createdAt: string;
+}
+
+export interface RenderEvent {
+  id: string;
+  serviceId: string;
+  timestamp: string;
+  type: string;
+  details?: {
+    deployId?: string;
+    deployStatus?: string;
+  };
 }
