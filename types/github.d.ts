@@ -17,6 +17,8 @@ declare global {
 
   interface GitHubCommitsResponse {
     commits: GitHubCommit[];
+    total_commits: number;
+    status: string;
   }
 }
 

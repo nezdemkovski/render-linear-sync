@@ -28,5 +28,5 @@ ENV NODE_ENV=production
 # Create a volume mount point for the database
 VOLUME ["/app/data"]
 
-# Set the entrypoint
-ENTRYPOINT ["bun", "run", "start"] 
+# Default command; Render one-off jobs can override it for replay.
+CMD ["bun", "run", "start"]

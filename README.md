@@ -285,3 +285,24 @@ This is a comma-separated list of prefixes. The system will look for tickets mat
 [SUCCESS] 2 tickets moved to Done
 [SUCCESS] 1 tickets are already completed/announced
 ```
+
+## Recovery and replay
+
+`bun test` and `bun run typecheck` validate pagination, team-specific Done states,
+GraphQL errors, dry-run behavior and checkpoint retention. Failed/incomplete
+ranges do not advance the checkpoint; dry runs never change it. Completed,
+canceled and duplicate tickets are left untouched.
+
+To recover a known missed range, run in the deployed service environment:
+
+```bash
+bun run src/replay.ts noona-hq/noona-api <full-from-SHA> <full-to-SHA> --dry-run
+bun run src/replay.ts noona-hq/noona-api <full-from-SHA> <full-to-SHA>
+```
+
+Replay uses the existing `LINEAR_API_KEY`, `GITHUB_TOKEN` and
+`LINEAR_TICKET_PREFIXES`. It fetches every GitHub compare page, processes unique
+tickets and exits nonzero if any update fails. It never rewrites the SQLite
+checkpoint, so it can recover an old range even if a previous version already
+advanced past it. Normal webhook processing still keeps its deployment audit in
+SQLite. Replay output is its audit trail.

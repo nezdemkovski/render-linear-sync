@@ -154,10 +154,14 @@ export const processDeployWebhook = async (
       }
     } else if (!accessible) {
       console.log(
-        `[WARN] Could not access GitHub commits, falling back to current commit only`
+        `[WARN] Could not access GitHub commits, checkpoint unchanged`
       );
+      throw new Error("Could not read complete GitHub range; checkpoint unchanged");
     }
   }
+
+  if (lastProcessedCommitId && !sourceRepo) throw new Error("Cannot resolve source repository; checkpoint unchanged");
+  if (!currentCommitMessage) throw new Error("Cannot read current commit; checkpoint unchanged");
 
   if (commitsToProcess.length === 0 && currentCommitMessage) {
     const currentCommitTickets = extractTicketsFromCommit(
@@ -181,7 +185,7 @@ export const processDeployWebhook = async (
         commitsToProcess.length > 0 ? "commits" : "commit"
       }`
     );
-    setLastProcessedCommit(
+    if (!isDryRun) setLastProcessedCommit(
       serviceId,
       serviceName,
       serviceBranch || "unknown",
@@ -210,9 +214,10 @@ export const processDeployWebhook = async (
     },
   ];
 
-  await processLinearTickets(allTickets, linearApiKey, isDryRun, deployTickets);
+  const success = await processLinearTickets(allTickets, linearApiKey, isDryRun, deployTickets);
+  if (!success) throw new Error("Linear updates failed; checkpoint unchanged");
 
-  setLastProcessedCommit(
+  if (!isDryRun) setLastProcessedCommit(
     serviceId,
     serviceName,
     serviceBranch || "unknown",

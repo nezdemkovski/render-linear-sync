@@ -12,6 +12,8 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "docker:build": "docker build -t render-linear-sync ."
+    "docker:build": "docker build -t render-linear-sync .",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   }
 }

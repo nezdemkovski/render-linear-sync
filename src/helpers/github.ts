@@ -38,34 +38,26 @@ export const getCommitsBetween = async (
       headers.Authorization = `Bearer ${githubToken}`;
     }
 
-    const response = await fetch(compareUrl, { headers });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        return { commits: [], accessible: false };
+    const commits: CommitWithAuthor[] = [];
+    let expectedTotal = 0;
+    for (let page = 1; ; page++) {
+      const response = await fetch(`${compareUrl}?per_page=100&page=${page}`, { headers });
+      if (!response.ok) throw new Error(`GitHub compare HTTP ${response.status} on page ${page}`);
+      const data = (await response.json()) as GitHubCommitsResponse;
+      if (data.status !== "ahead" && data.status !== "identical") {
+        throw new Error(`Refusing a ${data.status} commit range`);
       }
-      if (response.status === 403 && !githubToken) {
-        console.log(
-          `[WARN] GitHub API rate limit reached. Consider setting GITHUB_TOKEN for higher limits`
-        );
-        return { commits: [], accessible: false };
+      expectedTotal = data.total_commits;
+      for (const commit of data.commits) {
+        commits.push({ sha: commit.sha, message: commit.commit.message.split("\n")[0] || commit.commit.message, author: commit.author?.login || null });
       }
-      throw new Error(`GitHub API error: ${response.status}`);
+      if (commits.length >= expectedTotal) break;
+      if (data.commits.length === 0) throw new Error("GitHub returned an incomplete commit range");
     }
-
-    const compareData = (await response.json()) as GitHubCommitsResponse;
-
-    const commits = compareData.commits
-      .map((commit) => {
-        const title = commit.commit.message.split("\n")[0];
-        const message = title || commit.commit.message;
-        const author = commit.author?.login || null;
-        return { sha: commit.sha, message, author };
-      })
-      .filter((commit) => commit.message.length > 0);
-
+    if (commits.length !== expectedTotal) throw new Error("GitHub commit count does not match total_commits");
     return { commits, accessible: true };
   } catch (error) {
+    console.error(`[ERROR] ${error instanceof Error ? error.message : "GitHub compare failed"}`);
     return { commits: [], accessible: false };
   }
 };

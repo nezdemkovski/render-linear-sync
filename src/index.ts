@@ -107,7 +107,7 @@ const main = async () => {
             config.linearTicketPrefixes,
             config.githubToken
           ).catch((error) => {
-            console.error("[ERROR] Error processing webhook");
+            console.error("[ERROR] Error processing webhook:", error instanceof Error ? error.message : "unknown error");
           });
 
           return new Response(

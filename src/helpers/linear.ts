@@ -3,328 +3,96 @@ import type { DeployTicketInfo } from "../../types/linear";
 
 const LINEAR_API_URL = "https://api.linear.app/graphql";
 
-function createTicketRegex(prefixes: string[]): RegExp {
-  const prefixPattern = prefixes.join("|");
-  return new RegExp(`(${prefixPattern})-\\d+`, "gi");
-}
-
-export function extractTicketsFromCommit(
-  commitMessage: string,
-  prefixes: string[]
-): string[] {
-  const ticketRegex = createTicketRegex(prefixes);
-  const matches = commitMessage.match(ticketRegex);
-
-  if (!matches) {
-    return [];
-  }
-
+export function extractTicketsFromCommit(message: string, prefixes: string[]): string[] {
+  const matches = message.match(new RegExp(`(${prefixes.join("|")})-\\d+`, "gi")) || [];
   return [...new Set(matches.map((ticket) => ticket.toUpperCase()))];
 }
 
-export const getLinearIssue = async (
-  apiKey: string,
-  issueIdentifier: string
-) => {
-  const query = `
+async function linearRequest<T>(apiKey: string, query: string, variables: Record<string, string>): Promise<T> {
+  const response = await fetch(LINEAR_API_URL, {
+    method: "POST",
+    headers: { Authorization: apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!response.ok) throw new Error(`Linear HTTP ${response.status}`);
+  const result = (await response.json()) as { data?: T; errors?: { message: string }[] };
+  if (result.errors?.length) {
+    // Include GraphQL's reason, but never log credentials or request headers.
+    const message = result.errors.map((error) => error.message).join("; ");
+    throw new Error(`Linear: ${message.split(apiKey).join("[redacted]")}`);
+  }
+  if (!result.data) throw new Error("Linear returned no data");
+  return result.data;
+}
+
+export async function getLinearIssue(apiKey: string, identifier: string): Promise<LinearIssue | null> {
+  const data = await linearRequest<{ issue: LinearIssue | null }>(apiKey, `
     query GetIssue($id: String!) {
       issue(id: $id) {
-        id
-        identifier
-        title
-        state {
-          id
-          name
-        }
+        id identifier title
+        team { id }
+        state { id name type }
       }
-    }
-  `;
+    }`, { id: identifier });
+  return data.issue;
+}
 
-  try {
-    const response = await fetch(LINEAR_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        variables: { id: issueIdentifier },
-      }),
-    });
+export async function getDoneState(apiKey: string, teamId: string): Promise<LinearState | null> {
+  const data = await linearRequest<{ team: { states: { nodes: LinearState[] } } | null }>(apiKey, `
+    query GetStates($id: String!) {
+      team(id: $id) { states { nodes { id name type } } }
+    }`, { id: teamId });
+  return data.team?.states.nodes.find((state) => state.name.trim().toLowerCase() === "done") || null;
+}
 
-    if (!response.ok) {
-      console.error(
-        `[ERROR] Failed to get Linear issue ${issueIdentifier}: ${response.status}`
-      );
-      return null;
-    }
-
-    const data = (await response.json()) as { data: { issue: LinearIssue } };
-    return data.data.issue;
-  } catch (error) {
-    console.error(`[ERROR] Error getting Linear issue ${issueIdentifier}`);
-    return null;
-  }
-};
-
-export const getDoneState = async (apiKey: string) => {
-  const query = `
-    query GetStates {
-      workflowStates {
-        nodes {
-          id
-          name
-          type
-        }
-      }
-    }
-  `;
-
-  try {
-    const response = await fetch(LINEAR_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query }),
-    });
-
-    if (!response.ok) {
-      console.error(
-        `[ERROR] Failed to get Linear states: ${response.status} ${response.statusText}`
-      );
-      return null;
-    }
-
-    const data = (await response.json()) as {
-      data: {
-        workflowStates: {
-          nodes: LinearState[];
-        };
-      };
-    };
-
-    const doneState = data.data.workflowStates.nodes.find(
-      (state) => state.name.trim().toLowerCase() === "done"
-    );
-
-    return doneState || null;
-  } catch (error) {
-    console.error("[ERROR] Error getting Linear states");
-    return null;
-  }
-};
-
-export const updateIssueState = async (
-  apiKey: string,
-  issueId: string,
-  stateId: string
-) => {
-  const mutation = `
+export async function updateIssueState(apiKey: string, issueId: string, stateId: string): Promise<boolean> {
+  const data = await linearRequest<{ issueUpdate: { success: boolean } }>(apiKey, `
     mutation UpdateIssue($id: String!, $stateId: String!) {
-      issueUpdate(id: $id, input: { stateId: $stateId }) {
-        success
-        issue {
-          id
-          identifier
-          state {
-            name
-          }
-        }
-      }
-    }
-  `;
+      issueUpdate(id: $id, input: { stateId: $stateId }) { success }
+    }`, { id: issueId, stateId });
+  if (!data.issueUpdate.success) throw new Error("Linear issueUpdate returned success=false");
+  return true;
+}
 
-  try {
-    const response = await fetch(LINEAR_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: mutation,
-        variables: {
-          id: issueId,
-          stateId,
-        },
-      }),
-    });
+export async function moveIssueToDone(apiKey: string, identifier: string, knownIssue?: LinearIssue): Promise<boolean> {
+  const issue = knownIssue || await getLinearIssue(apiKey, identifier);
+  if (!issue) throw new Error(`Issue ${identifier} not found`);
+  const state = await getDoneState(apiKey, issue.team.id);
+  if (!state) throw new Error(`No Done state in team ${issue.team.id}`);
+  return issue.state.id === state.id || await updateIssueState(apiKey, issue.id, state.id);
+}
 
-    if (!response.ok) {
-      console.error(
-        `[ERROR] Failed to update Linear issue: ${response.status} ${response.statusText}`
-      );
-      return false;
-    }
-
-    const data = (await response.json()) as {
-      data: {
-        issueUpdate: {
-          success: boolean;
-          issue: LinearIssue;
-        };
-      };
-    };
-
-    if (data.data.issueUpdate.success) {
-      console.log(
-        `[SUCCESS] Issue ${data.data.issueUpdate.issue.identifier} moved to ${data.data.issueUpdate.issue.state.name}`
-      );
-      return true;
-    } else {
-      console.error("[ERROR] Failed to update issue state");
-      return false;
-    }
-  } catch (error) {
-    console.error("[ERROR] Error updating Linear issue");
-    return false;
-  }
-};
-
-export const moveIssueToDone = async (apiKey: string, issueId: string) => {
-  const doneState = await getDoneState(apiKey);
-  if (!doneState) {
-    console.error('[ERROR] Could not find "Done" state in Linear');
-    return false;
-  }
-
-  const issue = await getLinearIssue(apiKey, issueId);
-  if (!issue) {
-    console.error(`[ERROR] Issue ${issueId} not found in Linear`);
-    return false;
-  }
-
-  if (issue.state.id === doneState.id) {
-    console.log(
-      `[INFO] Issue ${issue.identifier} is already in ${issue.state.name} state`
-    );
-    return true;
-  }
-
-  return await updateIssueState(apiKey, issue.id, doneState.id);
-};
-
-export const processLinearTickets = async (
-  tickets: string[],
-  apiKey: string,
-  isDryRun: boolean = false,
-  deployTickets: DeployTicketInfo[] = []
-) => {
-  if (tickets.length === 0) {
-    return;
-  }
-
-  console.log(`\n[INFO] Checking ${tickets.length} Linear tickets...`);
-
-  const ticketPromises = tickets.map(async (ticketId) => {
+export async function processLinearTickets(
+  tickets: string[], apiKey: string, isDryRun = false, deployTickets: DeployTicketInfo[] = []
+): Promise<boolean> {
+  let alreadyDone = 0, movedToDone = 0, errors = 0;
+  console.log(`[INFO] Checking ${tickets.length} Linear tickets...`);
+  // Bound request volume when recovering a long backlog; continue collecting errors.
+  for (const ticketId of [...new Set(tickets)]) {
     try {
       const issue = await getLinearIssue(apiKey, ticketId);
-      return { ticketId, issue, error: null };
-    } catch (error) {
-      return { ticketId, issue: null, error };
-    }
-  });
-
-  const ticketResults = await Promise.all(ticketPromises);
-
-  let alreadyDone = 0;
-  let movedToDone = 0;
-  let errors = 0;
-
-  const ticketsToMove: string[] = [];
-
-  for (const { ticketId, issue, error } of ticketResults) {
-    if (error || !issue) {
-      console.error(`[ERROR] Failed to fetch ticket ${ticketId}`);
-      errors++;
-      continue;
-    }
-
-    const isDoneState =
-      issue.state.name.toLowerCase().includes("done") ||
-      issue.state.name.toLowerCase().includes("announced");
-
-    if (isDoneState) {
-      alreadyDone++;
-    } else {
+      if (!issue) throw new Error("Issue not found");
+      if (["completed", "canceled", "duplicate"].includes(issue.state.type)) {
+        alreadyDone++;
+        continue;
+      }
       if (isDryRun) {
-        console.log(
-          `[DRY-RUN] Would move ${ticketId} (${issue.title}) to Done (currently: ${issue.state.name})`
-        );
-        movedToDone++;
-      } else {
-        ticketsToMove.push(ticketId);
+        console.log(`[DRY-RUN] Would move ${ticketId} from ${issue.state.name} to Done`);
+        continue;
       }
+      await moveIssueToDone(apiKey, ticketId, issue);
+      const deploy = deployTickets.find((item) => item.tickets.includes(ticketId));
+      if (deploy && !wasTicketProcessedForDeploy(ticketId, deploy.deployId)) {
+        saveProcessedTicket(ticketId, issue.title, issue.state.name, "Done", deploy.deployId,
+          deploy.serviceId, deploy.serviceName, deploy.commitId, deploy.commitMessage);
+      }
+      movedToDone++;
+      console.log(`[SUCCESS] Issue ${ticketId} moved to Done`);
+    } catch (error) {
+      errors++;
+      console.error(`[ERROR] ${ticketId}: ${error instanceof Error ? error.message : "Linear request failed"}`);
     }
   }
-
-  if (!isDryRun && ticketsToMove.length > 0) {
-    const movePromises = ticketsToMove.map(async (ticketId) => {
-      try {
-        const success = await moveIssueToDone(apiKey, ticketId);
-        return { ticketId, success };
-      } catch (error) {
-        return { ticketId, success: false };
-      }
-    });
-
-    const moveResults = await Promise.all(movePromises);
-
-    for (const { ticketId, success } of moveResults) {
-      if (success) {
-        movedToDone++;
-
-        const issue = ticketResults.find((r) => r.ticketId === ticketId)?.issue;
-        if (issue) {
-          const deployInfo = deployTickets.find((dt) =>
-            dt.tickets.includes(ticketId)
-          );
-
-          if (deployInfo) {
-            if (!wasTicketProcessedForDeploy(ticketId, deployInfo.deployId)) {
-              saveProcessedTicket(
-                ticketId,
-                issue.title,
-                issue.state.name,
-                "Done",
-                deployInfo.deployId,
-                deployInfo.serviceId,
-                deployInfo.serviceName,
-                deployInfo.commitId,
-                deployInfo.commitMessage
-              );
-            }
-          }
-        }
-      } else {
-        console.error(
-          `[ERROR] Failed to move ${ticketId} to Done - will retry on next run`
-        );
-        errors++;
-      }
-    }
-  }
-
-  if (alreadyDone > 0) {
-    console.log(
-      `[INFO] ${alreadyDone} tickets are already completed/announced`
-    );
-  }
-
-  if (movedToDone > 0) {
-    if (isDryRun) {
-      console.log(`[DRY-RUN] ${movedToDone} tickets would be moved to Done`);
-    } else {
-      console.log(`[SUCCESS] ${movedToDone} tickets moved to Done`);
-    }
-  }
-
-  if (errors > 0) {
-    console.log(
-      `[WARN] ${errors} tickets had errors (will be retried on next run)`
-    );
-  }
-};
+  console.log(`[INFO] ${alreadyDone} already terminal; ${movedToDone} moved to Done; ${errors} errors`);
+  return errors === 0;
+}

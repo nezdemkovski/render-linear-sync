@@ -3,9 +3,11 @@ declare global {
     id: string;
     identifier: string;
     title: string;
+    team: { id: string };
     state: {
       id: string;
       name: string;
+      type: string;
     };
   }
 
